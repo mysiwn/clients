@@ -5,7 +5,7 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, x-proxy-password, x-proxy-cookie, x-proxy-ua, X-CSRFToken, X-IG-App-ID, X-IG-Device-ID, X-Secsdk-Csrf-Token, X-Secsdk-Csrf-Version, X-Secsdk-Csrf-Request, Referer, Origin, User-Agent, X-Requested-With",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, x-proxy-cookie, x-proxy-ua, mediaurl, X-CSRFToken, X-IG-App-ID, X-IG-Device-ID, X-Secsdk-Csrf-Token, X-Secsdk-Csrf-Version, X-Secsdk-Csrf-Request, Referer, Origin, User-Agent, X-Requested-With",
   "Access-Control-Expose-Headers": "*",
   "Access-Control-Max-Age": "86400"
 };
@@ -24,11 +24,14 @@ var worker_default = {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
-    const password = env.PROXY_PASSWORD ?? "sw1xuwulol";
-    if (request.headers.get("x-proxy-password") !== password) {
-      return errJson(403, "Forbidden \u2014 invalid or missing x-proxy-password");
-    }
     const url = new URL(request.url);
+
+    // ── /image endpoint: fetch & cache media via KV ──────
+    if (url.pathname === "/image") {
+      return handleImageRequest(request, env);
+    }
+
+    // ── General CORS proxy ───────────────────────────────
     let target = url.pathname.slice(1) + url.search;
     target = target.replace(/^(https?:\/)([^/])/, "$1/$2");
     if (!target || !/^https?:\/\//i.test(target)) {
@@ -44,13 +47,13 @@ var worker_default = {
     const proxyUa = request.headers.get("x-proxy-ua");
     for (const [key, value] of request.headers.entries()) {
       const lower = key.toLowerCase();
-      if (lower === "x-proxy-password")
-        continue;
       if (lower === "x-proxy-cookie")
         continue;
       if (lower === "x-proxy-ua")
         continue;
       if (lower === "host")
+        continue;
+      if (lower === "mediaurl")
         continue;
       if (lower.startsWith("cf-"))
         continue;
@@ -97,6 +100,83 @@ var worker_default = {
     });
   }
 };
+
+// ── Image handler with KV caching ────────────────────────
+async function handleImageRequest(request, env) {
+  const mediaUrl = request.headers.get("mediaurl");
+  if (!mediaUrl) {
+    return errJson(400, "Missing 'mediaurl' header");
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(mediaUrl);
+  } catch {
+    return errJson(400, "Invalid mediaurl: " + mediaUrl);
+  }
+
+  const kv = env.IMAGE_CACHE;
+
+  // Try KV cache first (if KV binding exists)
+  if (kv) {
+    try {
+      const { value, metadata } = await kv.getWithMetadata(mediaUrl, { type: "arrayBuffer" });
+      if (value) {
+        const headers = new Headers(CORS);
+        headers.set("Content-Type", metadata?.contentType || "application/octet-stream");
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        headers.set("X-Cache", "HIT");
+        return new Response(value, { status: 200, headers });
+      }
+    } catch (_) {
+      // KV read failed, fall through to fetch
+    }
+  }
+
+  // Fetch the image from upstream
+  let upstream;
+  try {
+    upstream = await fetch(parsedUrl.toString(), {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+        "Accept": "image/*,*/*;q=0.8",
+        "Referer": parsedUrl.origin + "/"
+      },
+      redirect: "follow"
+    });
+  } catch (err) {
+    return errJson(502, "Upstream fetch failed: " + err.message);
+  }
+
+  if (!upstream.ok) {
+    return errJson(upstream.status, "Upstream returned " + upstream.status);
+  }
+
+  const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+  const body = await upstream.arrayBuffer();
+
+  // Store in KV (non-blocking, 2 day TTL)
+  if (kv && body.byteLength < 25 * 1024 * 1024) {
+    try {
+      env.ctx?.waitUntil?.(
+        kv.put(mediaUrl, body, {
+          expirationTtl: 172800,
+          metadata: { contentType, cached: Date.now() }
+        })
+      );
+    } catch (_) {
+      // KV write failed, continue serving
+    }
+  }
+
+  const headers = new Headers(CORS);
+  headers.set("Content-Type", contentType);
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("X-Cache", "MISS");
+  return new Response(body, { status: 200, headers });
+}
+__name(handleImageRequest, "handleImageRequest");
+
 function errJson(status, message) {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -107,4 +187,3 @@ __name(errJson, "errJson");
 export {
   worker_default as default
 };
-//# sourceMappingURL=worker.js.map

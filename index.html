@@ -19,9 +19,9 @@
             color: #dcddde;
         }
 
-        /* ── Login ─────────────────────────────────────────── */
-        #login-screen {
-            display: flex;
+        /* ── Setup / Login shared ─────────────────────────────── */
+        #setup-screen, #login-screen {
+            display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -39,7 +39,7 @@
             flex-direction: column;
             align-items: center;
             gap: 12px;
-            min-width: 340px;
+            min-width: 380px;
         }
 
         .login-box h2 {
@@ -55,7 +55,7 @@
             font-size: 0.85rem;
         }
 
-        #token-input {
+        .login-input {
             width: 100%;
             padding: 12px;
             border-radius: 5px;
@@ -67,7 +67,7 @@
             font-family: inherit;
         }
 
-        #token-input:focus { box-shadow: 0 0 0 2px #5865f2; }
+        .login-input:focus { box-shadow: 0 0 0 2px #5865f2; }
 
         .notice {
             font-size: 0.78em;
@@ -75,6 +75,91 @@
             max-width: 300px;
             line-height: 1.5;
         }
+
+        /* ── Login Tabs ───────────────────────────────────────── */
+        .login-tabs {
+            display: flex;
+            width: 100%;
+            border-bottom: 2px solid #202225;
+            margin-bottom: 4px;
+        }
+
+        .login-tab {
+            flex: 1;
+            padding: 10px;
+            cursor: pointer;
+            color: #72767d;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: color 0.15s, border-color 0.15s;
+            background: none;
+            border-radius: 0;
+        }
+
+        .login-tab:hover { color: #dcddde; }
+        .login-tab.active { color: #5865f2; border-bottom-color: #5865f2; }
+
+        .login-panel { display: none; width: 100%; }
+        .login-panel.active { display: flex; flex-direction: column; gap: 10px; }
+
+        .login-panel > div { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+        #mfa-section { display: none; }
+        #mfa-section.active { display: flex; flex-direction: column; gap: 10px; }
+        #credential-fields.hidden { display: none; }
+
+        .mfa-toggle {
+            color: #00aff4;
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            text-decoration: underline;
+        }
+
+        .mfa-toggle:hover { color: #0090cc; }
+
+        .login-label {
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: #b9bbbe;
+            text-align: left;
+        }
+
+        /* ── Setup fields ─────────────────────────────────────── */
+        .setup-field {
+            width: 100%;
+            text-align: left;
+        }
+
+        .setup-field label {
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: #b9bbbe;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .setup-field select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 4px;
+            border: none;
+            background-color: #202225;
+            color: #dcddde;
+            outline: none;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .setup-field select:focus { box-shadow: 0 0 0 2px #5865f2; }
 
         /* ── App Layout ─────────────────────────────────────── */
         #app { display: none; width: 100%; }
@@ -165,9 +250,41 @@
             font-weight: 600;
             color: #fff;
             cursor: pointer;
+            position: relative;
         }
 
         .message .author:hover { text-decoration: underline; }
+
+        /* ── Author Tooltip ────────────────────────────────── */
+        .author-tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #18191c;
+            color: #b9bbbe;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 400;
+            white-space: nowrap;
+            z-index: 100;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .author-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #18191c;
+        }
+
+        .message .author:hover .author-tooltip { display: block; }
 
         .message .timestamp {
             font-size: 0.7rem;
@@ -242,7 +359,22 @@
             letter-spacing: 0.07em;
             text-transform: uppercase;
             padding: 12px 4px 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
+
+        .sidebar-label-add {
+            cursor: pointer;
+            color: #72767d;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 4px;
+            border-radius: 3px;
+            transition: color 0.1s;
+        }
+
+        .sidebar-label-add:hover { color: #dcddde; }
 
         .guild-item,
         .channel-item {
@@ -254,6 +386,7 @@
             font-size: 0.9rem;
             transition: background-color 0.1s, color 0.1s;
             user-select: none;
+            position: relative;
         }
 
         .guild-item:hover,
@@ -261,6 +394,23 @@
 
         .guild-item.active,
         .channel-item.active { background-color: #40444b; color: #fff; font-weight: 500; }
+
+        /* ── Unread Indicator ──────────────────────────────── */
+        .guild-item.unread,
+        .channel-item.unread { color: #fff; font-weight: 600; }
+
+        .guild-item.unread::before,
+        .channel-item.unread::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 8px;
+            background: #fff;
+            border-radius: 0 4px 4px 0;
+        }
 
         /* ── Scrollbar ──────────────────────────────────────── */
         ::-webkit-scrollbar { width: 6px; }
@@ -297,6 +447,8 @@
             border-radius: 8px;
             width: 420px;
             max-width: 90vw;
+            max-height: 85vh;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 16px;
@@ -315,7 +467,9 @@
             display: block;
         }
 
-        .modal input[type="number"] {
+        .modal input[type="number"],
+        .modal input[type="text"],
+        .modal select {
             width: 100%;
             padding: 10px 12px;
             border-radius: 4px;
@@ -327,7 +481,7 @@
             font-family: inherit;
         }
 
-        .modal input[type="number"]:focus { box-shadow: 0 0 0 2px #5865f2; }
+        .modal input:focus, .modal select:focus { box-shadow: 0 0 0 2px #5865f2; }
 
         .modal-buttons {
             display: flex;
@@ -369,6 +523,12 @@
         }
 
         .unblock-btn:hover { background: #c03537; }
+
+        .modal-separator {
+            border: none;
+            border-top: 1px solid #40444b;
+            margin: 4px 0;
+        }
 
         /* ── Context Menu ───────────────────────────────────── */
         .context-menu {
@@ -457,14 +617,97 @@
             vertical-align: -0.3em;
             display: inline;
         }
+
+        /* ── Add DM Modal ──────────────────────────────────── */
+        #add-dm-modal .modal {
+            width: 340px;
+        }
     </style>
 </head>
 
 <body>
 
+    <!-- ── Setup Screen ─────────────────────────────────── -->
+    <div id="setup-screen">
+        <div class="login-box">
+            <h2>Setup</h2>
+            <p>Configure your client before first use.</p>
+            <div class="setup-field">
+                <label>CORS Proxy URL</label>
+                <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
+            </div>
+            <div class="setup-field">
+                <label>Notifications</label>
+                <select id="setup-notify-mode">
+                    <option value="dm_mentions">DMs + Mentions</option>
+                    <option value="all">All unread messages</option>
+                    <option value="dm_only">DMs only</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <button id="setup-save-btn" style="width:100%">Save & Continue</button>
+        </div>
+    </div>
+
+    <!-- ── Login Screen ─────────────────────────────────── -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>Local Client</h2>
+            <p>Sign in to Discord.</p>
+
+            <div class="login-tabs">
+                <button class="login-tab active" data-tab="token">Token</button>
+                <button class="login-tab" data-tab="credentials">Login</button>
+            </div>
+
+            <!-- Token Tab -->
+            <div class="login-panel active" id="tab-token">
+                <div>
+                    <input type="password" class="login-input" id="token-input" placeholder="Paste your user token">
+                    <button id="login-button" style="width:100%">Connect</button>
+                </div>
+            </div>
+
+            <!-- Credentials Tab -->
+            <div class="login-panel" id="tab-credentials">
+                <div id="credential-fields">
+                    <input type="email" class="login-input" id="cred-email" placeholder="Email">
+                    <input type="password" class="login-input" id="cred-password" placeholder="Password">
+                    <button id="cred-login-button" style="width:100%">Log In</button>
+                </div>
+                <div id="mfa-section">
+                    <span class="login-label">Two-Factor Authentication</span>
+                    <input type="text" class="login-input" id="mfa-code" placeholder="6-digit code" autocomplete="one-time-code">
+                    <button id="mfa-submit-button" style="width:100%">Verify</button>
+                    <button class="mfa-toggle" id="mfa-toggle-backup">Use a backup code instead</button>
+                </div>
+            </div>
+
+            <div class="notice">
+                Requests route through a CORS proxy.
+            </div>
+            <div id="login-error" style="color:#ed4245;font-size:0.85rem;display:none"></div>
+        </div>
+    </div>
+
+    <!-- ── Settings Modal ───────────────────────────────── -->
     <div id="settings-modal" class="modal-overlay">
         <div class="modal">
             <h3>Settings</h3>
+            <div>
+                <label>Proxy URL</label>
+                <input type="text" id="setting-proxy-url">
+            </div>
+            <div>
+                <label>Notifications</label>
+                <select id="setting-notify-mode">
+                    <option value="dm_mentions">DMs + Mentions</option>
+                    <option value="all">All unread messages</option>
+                    <option value="dm_only">DMs only</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <hr class="modal-separator">
             <div>
                 <label>Auto-Refresh Interval (seconds, 0 to disable)</label>
                 <input type="number" id="setting-refresh" min="0" value="0">
@@ -487,22 +730,27 @@
         </div>
     </div>
 
-    <div id="context-menu" class="context-menu" style="display:none">
-        <div id="block-action" class="context-item">Block</div>
-    </div>
-
-    <div id="login-screen">
-        <div class="login-box">
-            <h2>Local Client</h2>
-            <p>Sign in with your Discord user token.</p>
-            <input type="password" id="token-input" placeholder="Token">
-            <button id="login-button" style="width:100%">Connect</button>
-            <div class="notice">
-                Requests route through a CORS proxy. Requires the proxy to be reachable from your network.
+    <!-- ── Add DM Modal ─────────────────────────────────── -->
+    <div id="add-dm-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>Open DM</h3>
+            <div>
+                <label>User ID</label>
+                <input type="text" id="add-dm-user-id" placeholder="Enter a user ID">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeAddDmModal()">Cancel</button>
+                <button id="add-dm-submit">Open</button>
             </div>
         </div>
     </div>
 
+    <!-- ── Context Menu ─────────────────────────────────── -->
+    <div id="context-menu" class="context-menu" style="display:none">
+        <div id="block-action" class="context-item">Block</div>
+    </div>
+
+    <!-- ── App ──────────────────────────────────────────── -->
     <div id="app">
         <div class="sidebar">
             <div class="guilds" id="guild-list"></div>
@@ -512,33 +760,72 @@
         <div class="main">
             <div class="header" id="chat-header">
                 <span id="chat-title">Select a channel</span>
-                <button class="settings-btn" onclick="openSettings()">⚙ Settings</button>
+                <button class="settings-btn" onclick="openSettings()">Settings</button>
             </div>
             <div class="messages" id="message-list"></div>
             <div class="input-area">
                 <input type="file" id="file-input" style="display:none">
                 <label for="file-input" class="file-upload-btn" id="file-btn" style="pointer-events:none;opacity:0.4">+</label>
-                <input type="text" id="message-input" placeholder="Message…" disabled>
+                <input type="text" id="message-input" placeholder="Message..." disabled>
                 <button id="send-button" disabled>Send</button>
             </div>
         </div>
     </div>
 
     <script>
-        // ── Config ────────────────────────────────────────────
-        const API_BASE   = 'https://cors-proxy.mysiwn.workers.dev/https://discord.com/api/v9';
-        const PROXY_BASE = 'https://cors-proxy.mysiwn.workers.dev';
-        const CORS_KEY   = 'sw1xuwulol';
+        // ── Client Config (dynamic, from localStorage) ──────
+        const DEFAULT_CONFIG = {
+            proxyBase: 'https://cors-proxy.mysiwn.workers.dev',
+            notifyMode: 'dm_mentions' // 'dm_mentions' | 'all' | 'dm_only' | 'off'
+        };
+
+        function loadClientConfig() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('discord_client_config'));
+                if (saved && typeof saved === 'object') return { ...DEFAULT_CONFIG, ...saved };
+            } catch (_) {}
+            return null;
+        }
+
+        function saveClientConfig(cfg) {
+            localStorage.setItem('discord_client_config', JSON.stringify(cfg));
+            clientConfig = cfg;
+        }
+
+        let clientConfig = loadClientConfig();
+
+        function getApiBase() {
+            return clientConfig.proxyBase + '/https://discord.com/api/v9';
+        }
 
         // ── State ─────────────────────────────────────────────
         let userToken        = '';
+        let currentUserId    = '';
         let currentChannelId = null;
         let refreshTimeout   = null;
         let isConnecting     = false;
         let currentView      = 'dm'; // 'dm' | 'guild'
-        let activeBlobUrls   = [];   // tracked for revocation on message clear
+        let activeBlobUrls   = [];
+        let lastReadMessageIds = {};  // channelId -> lastMessageId
+        let currentGuildChannels = {}; // guildId -> [channel objects]
+        let mfaTicket        = '';
+        let mfaIsBackup      = false;
+
+        function loadReadState() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('discord_read_state'));
+                if (saved && typeof saved === 'object') lastReadMessageIds = saved;
+            } catch (_) {}
+        }
+
+        function saveReadState() {
+            localStorage.setItem('discord_read_state', JSON.stringify(lastReadMessageIds));
+        }
+
+        loadReadState();
 
         // ── DOM Refs ──────────────────────────────────────────
+        const setupScreen  = document.getElementById('setup-screen');
         const loginScreen  = document.getElementById('login-screen');
         const appScreen    = document.getElementById('app');
         const tokenInput   = document.getElementById('token-input');
@@ -553,6 +840,7 @@
         const fileBtn      = document.getElementById('file-btn');
         const contextMenu  = document.getElementById('context-menu');
         const blockAction  = document.getElementById('block-action');
+        const loginError   = document.getElementById('login-error');
 
         // ── Settings ──────────────────────────────────────────
         let settings = {
@@ -569,8 +857,6 @@
             } catch (_) {}
         }
         loadSettings();
-        // Sync the input to the persisted value immediately so it's correct when the modal opens
-        document.getElementById('setting-refresh').value = settings.refreshInterval;
 
         function saveSettings() {
             localStorage.setItem('discord_settings', JSON.stringify(settings));
@@ -586,6 +872,166 @@
 
         function isBlocked(list, id) {
             return list.some(item => String(item.id) === String(id));
+        }
+
+        // ── Setup Screen ────────────────────────────────────
+        const setupSaveBtn = document.getElementById('setup-save-btn');
+
+        setupSaveBtn.addEventListener('click', () => {
+            const proxyBase = document.getElementById('setup-proxy-url').value.trim().replace(/\/+$/, '');
+            const notifyMode = document.getElementById('setup-notify-mode').value;
+            if (!proxyBase) {
+                alert('Proxy URL is required.');
+                return;
+            }
+            saveClientConfig({ proxyBase, notifyMode });
+            setupScreen.style.display = 'none';
+            showLoginScreen();
+        });
+
+        // ── Init Flow ────────────────────────────────────────
+        function init() {
+            if (!clientConfig) {
+                setupScreen.style.display = 'flex';
+            } else {
+                showLoginScreen();
+            }
+        }
+
+        function showLoginScreen() {
+            const savedToken = localStorage.getItem('discord_user_token');
+            if (savedToken) {
+                tokenInput.value = savedToken;
+                loginScreen.style.display = 'flex';
+                connect(savedToken);
+            } else {
+                loginScreen.style.display = 'flex';
+            }
+        }
+
+        // ── Login Tabs ───────────────────────────────────────
+        document.querySelectorAll('.login-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.login-panel').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+                showLoginError('');
+                resetMfaState();
+            });
+        });
+
+        function showLoginError(msg) {
+            loginError.textContent = msg;
+            loginError.style.display = msg ? 'block' : 'none';
+        }
+
+        function resetMfaState() {
+            mfaTicket = '';
+            mfaIsBackup = false;
+            document.getElementById('mfa-section').classList.remove('active');
+            document.getElementById('credential-fields').classList.remove('hidden');
+            document.getElementById('mfa-code').value = '';
+            document.getElementById('mfa-toggle-backup').textContent = 'Use a backup code instead';
+        }
+
+        // ── Credential Login ─────────────────────────────────
+        const credLoginBtn = document.getElementById('cred-login-button');
+        const credEmail    = document.getElementById('cred-email');
+        const credPassword = document.getElementById('cred-password');
+        const mfaCodeInput = document.getElementById('mfa-code');
+        const mfaSubmitBtn = document.getElementById('mfa-submit-button');
+        const mfaToggle    = document.getElementById('mfa-toggle-backup');
+
+        credLoginBtn.addEventListener('click', () => loginWithCredentials());
+        credPassword.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithCredentials(); });
+
+        async function loginWithCredentials() {
+            const email = credEmail.value.trim();
+            const password = credPassword.value;
+            if (!email || !password) return;
+
+            credLoginBtn.disabled = true;
+            credLoginBtn.textContent = 'Logging in...';
+            showLoginError('');
+
+            try {
+                const res = await fetch(`${getApiBase()}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ login: email, password })
+                });
+                const data = await res.json();
+
+                if (data.token) {
+                    connect(data.token);
+                    return;
+                }
+
+                if (data.mfa || data.ticket) {
+                    mfaTicket = data.ticket;
+                    document.getElementById('credential-fields').classList.add('hidden');
+                    document.getElementById('mfa-section').classList.add('active');
+                    mfaCodeInput.focus();
+                    return;
+                }
+
+                if (data.captcha_key) {
+                    showLoginError('CAPTCHA required. Use token login instead.');
+                    return;
+                }
+
+                showLoginError(data.message || `Login failed (${res.status})`);
+            } catch (err) {
+                showLoginError(`Login failed: ${err.message}`);
+            } finally {
+                credLoginBtn.disabled = false;
+                credLoginBtn.textContent = 'Log In';
+            }
+        }
+
+        // ── MFA ──────────────────────────────────────────────
+        mfaToggle.addEventListener('click', () => {
+            mfaIsBackup = !mfaIsBackup;
+            mfaToggle.textContent = mfaIsBackup ? 'Use TOTP code instead' : 'Use a backup code instead';
+            mfaCodeInput.placeholder = mfaIsBackup ? 'Backup code (xxxx-xxxx)' : '6-digit code';
+            mfaCodeInput.value = '';
+            mfaCodeInput.focus();
+        });
+
+        mfaSubmitBtn.addEventListener('click', () => submitMFA());
+        mfaCodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitMFA(); });
+
+        async function submitMFA() {
+            const code = mfaCodeInput.value.trim();
+            if (!code || !mfaTicket) return;
+
+            mfaSubmitBtn.disabled = true;
+            mfaSubmitBtn.textContent = 'Verifying...';
+            showLoginError('');
+
+            const endpoint = mfaIsBackup ? '/auth/mfa/backup-codes/verify' : '/auth/mfa/totp';
+            try {
+                const res = await fetch(`${getApiBase()}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, ticket: mfaTicket })
+                });
+                const data = await res.json();
+
+                if (data.token) {
+                    resetMfaState();
+                    connect(data.token);
+                    return;
+                }
+
+                showLoginError(data.message || `MFA failed (${res.status})`);
+            } catch (err) {
+                showLoginError(`MFA failed: ${err.message}`);
+            } finally {
+                mfaSubmitBtn.disabled = false;
+                mfaSubmitBtn.textContent = 'Verify';
+            }
         }
 
         // ── Settings Modal ───────────────────────────────────
@@ -615,6 +1061,8 @@
         }
 
         function openSettings() {
+            document.getElementById('setting-proxy-url').value = clientConfig.proxyBase;
+            document.getElementById('setting-notify-mode').value = clientConfig.notifyMode || 'dm_mentions';
             document.getElementById('setting-refresh').value = settings.refreshInterval;
             renderBlockedList('blocked-users-list',    settings.blockedUsers,    'blockedUsers');
             renderBlockedList('blocked-servers-list',  settings.blockedServers,  'blockedServers');
@@ -623,6 +1071,14 @@
         }
 
         function closeSettings() {
+            // Save config changes
+            const newProxy = document.getElementById('setting-proxy-url').value.trim().replace(/\/+$/, '');
+            const newNotify = document.getElementById('setting-notify-mode').value;
+            if (newProxy && newProxy !== clientConfig.proxyBase) {
+                saveClientConfig({ ...clientConfig, proxyBase: newProxy, notifyMode: newNotify });
+            } else {
+                saveClientConfig({ ...clientConfig, notifyMode: newNotify });
+            }
             document.getElementById('settings-modal').style.display = 'none';
         }
 
@@ -634,6 +1090,7 @@
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
                 closeSettings();
+                closeAddDmModal();
                 contextMenu.style.display = 'none';
             }
         });
@@ -677,10 +1134,10 @@
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length > 0) {
                 fileBtn.classList.add('active');
-                messageInput.placeholder = 'Add a message…';
+                messageInput.placeholder = 'Add a message...';
             } else {
                 fileBtn.classList.remove('active');
-                messageInput.placeholder = 'Message…';
+                messageInput.placeholder = 'Message...';
             }
         });
 
@@ -710,30 +1167,38 @@
         });
 
         // ── Auth ──────────────────────────────────────────────
-        const savedToken = localStorage.getItem('discord_user_token');
-        if (savedToken) tokenInput.value = savedToken;
-
         async function connect(token) {
             if (isConnecting || !token) return;
             isConnecting = true;
             userToken = token.replace(/^"(.*)"$/, '$1');
-            loginButton.textContent = 'Connecting…';
+            loginButton.textContent = 'Connecting...';
             loginButton.disabled    = true;
+            showLoginError('');
+
             try {
-                const res = await fetch(`${API_BASE}/users/@me`, {
-                    headers: { 'Authorization': userToken, 'x-proxy-password': CORS_KEY }
+                const res = await fetch(`${getApiBase()}/users/@me`, {
+                    headers: { 'Authorization': userToken }
                 });
                 if (res.status === 401) throw new Error('Invalid token.');
                 if (!res.ok) throw new Error(`Server responded with ${res.status}.`);
 
+                const userData = await res.json();
+                currentUserId = userData.id;
+
                 localStorage.setItem('discord_user_token', userToken);
                 loginScreen.style.display = 'none';
                 appScreen.style.display   = 'flex';
+
+                // Request notification permission
+                if (clientConfig.notifyMode !== 'off' && 'Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+
                 loadGuilds();
                 loadDMs();
                 startAutoRefresh();
             } catch (err) {
-                alert(`Connection failed: ${err.message}`);
+                showLoginError(`Connection failed: ${err.message}`);
                 loginButton.textContent = 'Connect';
                 loginButton.disabled    = false;
                 localStorage.removeItem('discord_user_token');
@@ -743,7 +1208,6 @@
             }
         }
 
-        if (savedToken) connect(savedToken);
         loginButton.addEventListener('click', () => connect(tokenInput.value.trim()));
         tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') connect(tokenInput.value.trim()); });
 
@@ -752,12 +1216,41 @@
             const headers = {
                 'Authorization': userToken,
                 'Content-Type':  'application/json',
-                'x-proxy-password': CORS_KEY,
                 ...options.headers
             };
-            const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+            const res = await fetch(`${getApiBase()}${endpoint}`, { ...options, headers });
             if (!res.ok) throw new Error(`API ${res.status}`);
             return res.status === 204 ? null : res.json();
+        }
+
+        // ── Notifications ────────────────────────────────────
+        function shouldNotify(channelId, msg) {
+            if (!clientConfig || clientConfig.notifyMode === 'off') return false;
+            if ('Notification' in window && Notification.permission !== 'granted') return false;
+            if (msg.author?.id === currentUserId) return false;
+
+            const mode = clientConfig.notifyMode;
+            const isDm = currentView === 'dm' || !channelId;
+
+            if (mode === 'dm_only') return isDm;
+            if (mode === 'dm_mentions') {
+                return isDm || (msg.content && msg.content.includes(`<@${currentUserId}>`));
+            }
+            if (mode === 'all') return true;
+            return false;
+        }
+
+        function sendNotification(msg, channelId) {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            const authorName = msg.author?.global_name || msg.author?.username || 'Unknown';
+            const body = msg.content ? msg.content.substring(0, 200) : '(attachment)';
+            const n = new Notification(authorName, { body, tag: `msg-${msg.id}` });
+            n.onclick = () => {
+                window.focus();
+                if (channelId !== currentChannelId) {
+                    loadMessages(channelId);
+                }
+            };
         }
 
         // ── Guilds ────────────────────────────────────────────
@@ -781,6 +1274,7 @@
                         currentView = 'guild';
                         loadChannels(guild.id);
                     });
+                    div.dataset.guildId = guild.id;
                     div.oncontextmenu = e => showContextMenu(e, 'server', guild.id, guild.name);
                     guildList.appendChild(div);
                     parseTwemoji(div);
@@ -798,6 +1292,7 @@
         function setActiveChannel(el, name) {
             document.querySelectorAll('.channel-item').forEach(e => e.classList.remove('active'));
             el.classList.add('active');
+            el.classList.remove('unread');
             chatTitle.textContent = name;
         }
 
@@ -805,7 +1300,15 @@
         async function loadDMs() {
             try {
                 channelList.innerHTML = '';
-                channelList.appendChild(sidebarLabel('Direct Messages'));
+                const label = sidebarLabel('Direct Messages');
+                const addBtn = document.createElement('span');
+                addBtn.className = 'sidebar-label-add';
+                addBtn.textContent = '+';
+                addBtn.title = 'Open DM';
+                addBtn.addEventListener('click', openAddDmModal);
+                label.appendChild(addBtn);
+                channelList.appendChild(label);
+
                 const dms = await apiCall('/users/@me/channels');
                 dms.sort((a, b) => {
                     try {
@@ -821,8 +1324,14 @@
                         || 'Unknown';
                     const div = makeItem('channel-item', name, e => {
                         setActiveChannel(e.currentTarget, name);
+                        markChannelRead(ch.id, ch.last_message_id);
                         loadMessages(ch.id);
                     });
+                    // Check unread
+                    if (ch.last_message_id && isChannelUnread(ch.id, ch.last_message_id)) {
+                        div.classList.add('unread');
+                    }
+                    div.dataset.channelId = ch.id;
                     div.oncontextmenu = e => showContextMenu(e, 'channel', ch.id, name);
                     channelList.appendChild(div);
                     parseTwemoji(div);
@@ -838,22 +1347,54 @@
                 channelList.innerHTML = '';
                 channelList.appendChild(sidebarLabel('Text Channels'));
                 const channels = await apiCall(`/guilds/${guildId}/channels`);
-                channels
-                    .filter(c => c.type === 0)
-                    .sort((a, b) => a.position - b.position)
-                    .forEach(ch => {
-                        if (isBlocked(settings.blockedChannels, ch.id)) return;
-                        const displayName = `# ${ch.name}`;
-                        const div = makeItem('channel-item', displayName, e => {
-                            setActiveChannel(e.currentTarget, displayName);
-                            loadMessages(ch.id);
-                        });
-                        div.oncontextmenu = e => showContextMenu(e, 'channel', ch.id, displayName);
-                        channelList.appendChild(div);
-                        parseTwemoji(div);
+                const textChannels = channels.filter(c => c.type === 0).sort((a, b) => a.position - b.position);
+                currentGuildChannels[guildId] = textChannels;
+
+                let hasUnread = false;
+                textChannels.forEach(ch => {
+                    if (isBlocked(settings.blockedChannels, ch.id)) return;
+                    const displayName = `# ${ch.name}`;
+                    const div = makeItem('channel-item', displayName, e => {
+                        setActiveChannel(e.currentTarget, displayName);
+                        markChannelRead(ch.id, ch.last_message_id);
+                        loadMessages(ch.id);
                     });
+                    if (ch.last_message_id && isChannelUnread(ch.id, ch.last_message_id)) {
+                        div.classList.add('unread');
+                        hasUnread = true;
+                    }
+                    div.dataset.channelId = ch.id;
+                    div.oncontextmenu = e => showContextMenu(e, 'channel', ch.id, displayName);
+                    channelList.appendChild(div);
+                    parseTwemoji(div);
+                });
+
+                // Update guild unread indicator
+                const guildEl = document.querySelector(`.guild-item[data-guild-id="${guildId}"]`);
+                if (guildEl) {
+                    guildEl.classList.toggle('unread', hasUnread);
+                }
             } catch (err) {
                 console.error('Failed to load channels:', err);
+            }
+        }
+
+        // ── Unread State ─────────────────────────────────────
+        function isChannelUnread(channelId, lastMessageId) {
+            if (!lastMessageId) return false;
+            const lastRead = lastReadMessageIds[channelId];
+            if (!lastRead) return true; // never read = unread
+            try {
+                return BigInt(lastMessageId) > BigInt(lastRead);
+            } catch (_) {
+                return lastMessageId !== lastRead;
+            }
+        }
+
+        function markChannelRead(channelId, lastMessageId) {
+            if (lastMessageId) {
+                lastReadMessageIds[channelId] = lastMessageId;
+                saveReadState();
             }
         }
 
@@ -872,7 +1413,7 @@
             if (!silent) {
                 clearBlobUrls();
                 messageList.innerHTML = '';
-                messageList.appendChild(placeholder('Loading messages…'));
+                messageList.appendChild(placeholder('Loading messages...'));
             }
 
             try {
@@ -881,6 +1422,33 @@
                 // Discard stale response if channel changed mid-fetch
                 if (channelId !== currentChannelId) return;
                 if (silent && !messages.length) return;
+
+                // Check for new messages for notifications (on silent/auto-refresh)
+                if (silent && messages.length > 0) {
+                    const latestMsg = messages[0]; // messages come newest-first
+                    const prevLastId = lastReadMessageIds[channelId];
+                    if (prevLastId && latestMsg.id !== prevLastId) {
+                        // Find new messages since last read
+                        for (const msg of messages) {
+                            try {
+                                if (BigInt(msg.id) <= BigInt(prevLastId)) break;
+                            } catch (_) {
+                                if (msg.id === prevLastId) break;
+                            }
+                            if (shouldNotify(channelId, msg)) {
+                                sendNotification(msg, channelId);
+                            }
+                        }
+                    }
+                }
+
+                // Mark channel as read
+                if (messages.length > 0) {
+                    markChannelRead(channelId, messages[0].id);
+                    // Update sidebar unread indicator
+                    const channelEl = document.querySelector(`.channel-item[data-channel-id="${channelId}"]`);
+                    if (channelEl) channelEl.classList.remove('unread');
+                }
 
                 clearBlobUrls();
                 messageList.innerHTML = '';
@@ -901,7 +1469,6 @@
                 if (!silent || atBottom) {
                     messageList.scrollTop = messageList.scrollHeight;
                 } else {
-                    // Restore relative scroll position after re-render
                     messageList.scrollTop = prevScrollTop + (messageList.scrollHeight - prevScrollHeight);
                 }
             } catch (err) {
@@ -923,27 +1490,27 @@
                 ? `Today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                 : date.toLocaleString([], { month: 'numeric', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-            const username = msg.author?.global_name || msg.author?.username || 'Unknown';
+            const displayName = msg.author?.global_name || msg.author?.username || 'Unknown';
+            const actualUsername = msg.author?.username || '';
 
             let attachHtml = '';
             (msg.attachments || []).forEach((att, idx) => {
                 const id   = `att-${msg.id}-${idx}`;
                 const type = att.content_type || '';
                 const name = escapeHtml(att.filename || 'file');
-                // Use proxy_url for images (Discord's resized CDN), raw url for video/files
                 const proxyUrl = escapeHtml(type.startsWith('image/') ? (att.proxy_url || att.url) : att.url);
                 if (type.startsWith('image/')) {
                     attachHtml += `<img id="${id}" class="attachment-preview" alt="${name}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${proxyUrl}" data-filename="${name}">`;
                 } else if (type.startsWith('video/')) {
                     attachHtml += `<video id="${id}" controls class="attachment-preview" data-proxy-url="${proxyUrl}" data-filename="${name}"></video>`;
                 } else {
-                    attachHtml += `<a id="${id}" class="attachment-link" data-proxy-url="${proxyUrl}" data-filename="${name}">📎 ${name}</a>`;
+                    attachHtml += `<a id="${id}" class="attachment-link" data-proxy-url="${proxyUrl}" data-filename="${name}">&#x1F4CE; ${name}</a>`;
                 }
             });
 
             div.innerHTML = `
                 <div class="message-header">
-                    <span class="author">${escapeHtml(username)}</span>
+                    <span class="author">${escapeHtml(displayName)}${actualUsername ? `<span class="author-tooltip">@${escapeHtml(actualUsername)}</span>` : ''}</span>
                     <span class="timestamp">${timeStr}</span>
                 </div>
                 <div class="content">${escapeHtml(msg.content)}</div>
@@ -952,7 +1519,7 @@
 
             const authorEl = div.querySelector('.author');
             if (authorEl && msg.author) {
-                authorEl.oncontextmenu = e => showContextMenu(e, 'user', msg.author.id, username);
+                authorEl.oncontextmenu = e => showContextMenu(e, 'user', msg.author.id, displayName);
             }
 
             return div;
@@ -964,28 +1531,22 @@
                 const filename = el.dataset.filename || url.split('/').pop().split('?')[0];
 
                 if (el.tagName === 'IMG' || el.tagName === 'VIDEO') {
-                    // Set src directly first — no CORS needed, so it always displays.
                     el.src = url;
                     if (el.tagName === 'IMG') el.alt = filename;
 
-                    // Try to fetch a blob: upgrades src to an object URL (avoids
-                    // repeated CDN requests and works better behind filters) and
-                    // enables a proper client-side download button.
                     proxyMedia(url).then(({ blobUrl }) => {
                         activeBlobUrls.push(blobUrl);
-                        el.src = blobUrl; // upgrade display src to blob
+                        el.src = blobUrl;
                         addDownloadLink(el, blobUrl, filename);
                     }).catch(() => {
-                        // Blob unavailable — keep the direct src and show an open link.
                         const link       = document.createElement('a');
                         link.href        = url;
                         link.target      = '_blank';
                         link.className   = 'download-link';
-                        link.textContent = '⬇ Open';
+                        link.textContent = 'Open';
                         el.after(link);
                     });
                 } else {
-                    // File attachment (<a>) — try blob download, fall back to direct link.
                     proxyMedia(url).then(({ blobUrl }) => {
                         activeBlobUrls.push(blobUrl);
                         el.href     = blobUrl;
@@ -1025,9 +1586,9 @@
                     extraHeaders['Content-Type'] = 'application/json';
                 }
 
-                const res = await fetch(`${API_BASE}/channels/${currentChannelId}/messages`, {
+                const res = await fetch(`${getApiBase()}/channels/${currentChannelId}/messages`, {
                     method: 'POST',
-                    headers: { 'Authorization': userToken, 'x-proxy-password': CORS_KEY, ...extraHeaders },
+                    headers: { 'Authorization': userToken, ...extraHeaders },
                     body
                 });
 
@@ -1036,7 +1597,7 @@
                 messageInput.value       = '';
                 fileInput.value          = '';
                 fileBtn.classList.remove('active');
-                messageInput.placeholder = 'Message…';
+                messageInput.placeholder = 'Message...';
                 loadMessages(currentChannelId);
             } catch (err) {
                 alert(`Failed to send: ${err.message}`);
@@ -1049,10 +1610,9 @@
 
         // ── Proxy / Media ─────────────────────────────────────
         async function proxyMedia(url) {
-            // No custom headers — keeps it a simple request so no preflight fires.
-            // The proxy may redirect to the CDN; without x-proxy-password the CDN's
-            // CORS (Access-Control-Allow-Origin: *) lets the blob through.
-            const res = await fetch(`${PROXY_BASE}/${url}`);
+            const res = await fetch(`${clientConfig.proxyBase}/image`, {
+                headers: { 'mediaurl': url }
+            });
             if (!res.ok) throw new Error(res.status);
             const blob    = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
@@ -1064,13 +1624,48 @@
             a.href        = blobUrl;
             a.download    = filename;
             a.className   = 'download-link';
-            a.textContent = '⬇ Download';
+            a.textContent = 'Download';
             el.after(a);
         }
 
         function clearBlobUrls() {
             activeBlobUrls.forEach(u => URL.revokeObjectURL(u));
             activeBlobUrls = [];
+        }
+
+        // ── Add DM Modal ─────────────────────────────────────
+        function openAddDmModal() {
+            document.getElementById('add-dm-user-id').value = '';
+            document.getElementById('add-dm-modal').style.display = 'flex';
+            document.getElementById('add-dm-user-id').focus();
+        }
+
+        function closeAddDmModal() {
+            document.getElementById('add-dm-modal').style.display = 'none';
+        }
+
+        document.getElementById('add-dm-submit').addEventListener('click', addDm);
+        document.getElementById('add-dm-user-id').addEventListener('keydown', e => {
+            if (e.key === 'Enter') addDm();
+        });
+
+        async function addDm() {
+            const userId = document.getElementById('add-dm-user-id').value.trim();
+            if (!userId) return;
+            try {
+                const channel = await apiCall('/users/@me/channels', {
+                    method: 'POST',
+                    body: JSON.stringify({ recipients: [userId] })
+                });
+                closeAddDmModal();
+                currentView = 'dm';
+                await loadDMs();
+                const name = channel.recipients?.map(r => r.global_name || r.username).join(', ') || 'DM';
+                chatTitle.textContent = name;
+                loadMessages(channel.id);
+            } catch (err) {
+                alert(`Failed to open DM: ${err.message}`);
+            }
         }
 
         // ── Helpers ───────────────────────────────────────────
@@ -1110,6 +1705,12 @@
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
             }[c]));
         }
+
+        // ── Sync refresh input ───────────────────────────────
+        document.getElementById('setting-refresh').value = settings.refreshInterval;
+
+        // ── Start ────────────────────────────────────────────
+        init();
     </script>
 </body>
 
