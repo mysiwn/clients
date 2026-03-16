@@ -114,9 +114,53 @@
 
         #mfa-section { display: none; }
         #mfa-section.active { display: flex; flex-direction: column; gap: 10px; }
-        #captcha-section { display: none; }
-        #captcha-section.active { display: flex; flex-direction: column; gap: 10px; align-items: center; }
         #credential-fields.hidden { display: none; }
+
+        /* ── QR Code Login ────────────────────────────────────── */
+        #qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+        }
+
+        #qr-canvas {
+            border-radius: 8px;
+            background: #fff;
+            padding: 12px;
+        }
+
+        #qr-status {
+            font-size: 0.85rem;
+            color: #b9bbbe;
+            text-align: center;
+        }
+
+        #qr-status.success { color: #43b581; }
+        #qr-status.error { color: #ed4245; }
+
+        #qr-user-info {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #qr-user-info.active { display: flex; }
+
+        #qr-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: #202225;
+        }
+
+        #qr-username {
+            color: #fff;
+            font-weight: 600;
+            font-size: 1rem;
+        }
 
         .mfa-toggle {
             color: #00aff4;
@@ -666,6 +710,7 @@
             <div class="login-tabs">
                 <button class="login-tab active" data-tab="token">Token</button>
                 <button class="login-tab" data-tab="credentials">Login</button>
+                <button class="login-tab" data-tab="qr">QR Code</button>
             </div>
 
             <!-- Token Tab -->
@@ -689,9 +734,18 @@
                     <button id="mfa-submit-button" style="width:100%">Verify</button>
                     <button class="mfa-toggle" id="mfa-toggle-backup">Use a backup code instead</button>
                 </div>
-                <div id="captcha-section">
-                    <span class="login-label">Complete the CAPTCHA</span>
-                    <div id="captcha-container"></div>
+            </div>
+
+            <!-- QR Code Tab -->
+            <div class="login-panel" id="tab-qr">
+                <div id="qr-container">
+                    <div id="qr-status">Loading...</div>
+                    <canvas id="qr-canvas" width="200" height="200"></canvas>
+                    <div id="qr-user-info">
+                        <img id="qr-avatar" src="">
+                        <span id="qr-username"></span>
+                        <span style="color:#b9bbbe;font-size:0.8rem">Confirm login on your phone</span>
+                    </div>
                 </div>
             </div>
 
@@ -822,8 +876,8 @@
         let currentGuildChannels = {}; // guildId -> [channel objects]
         let mfaTicket        = '';
         let mfaIsBackup      = false;
-        let pendingCaptchaKey = '';
-        let hcaptchaLoaded   = false;
+        let qrWebSocket      = null;
+        let qrKeyPair        = null;
 
         function loadReadState() {
             try {
@@ -932,6 +986,8 @@
                 document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
                 showLoginError('');
                 resetMfaState();
+                cleanupQrLogin();
+                if (tab.dataset.tab === 'qr') startQrLogin();
             });
         });
 
@@ -943,15 +999,10 @@
         function resetMfaState() {
             mfaTicket = '';
             mfaIsBackup = false;
-            pendingCaptchaKey = '';
             document.getElementById('mfa-section').classList.remove('active');
-            document.getElementById('captcha-section').classList.remove('active');
             document.getElementById('credential-fields').classList.remove('hidden');
             document.getElementById('mfa-code').value = '';
             document.getElementById('mfa-toggle-backup').textContent = 'Use a backup code instead';
-            // Clean up hCaptcha widget if present
-            const container = document.getElementById('captcha-container');
-            if (container) container.innerHTML = '';
         }
 
         // ── Credential Login ─────────────────────────────────
@@ -965,58 +1016,6 @@
         credLoginBtn.addEventListener('click', () => loginWithCredentials());
         credPassword.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithCredentials(); });
 
-        // ── hCaptcha loader ──────────────────────────────────
-        function loadHcaptcha() {
-            return new Promise((resolve, reject) => {
-                if (window.hcaptcha) { resolve(); return; }
-                if (hcaptchaLoaded) {
-                    // Script is loading, poll for it
-                    const check = setInterval(() => {
-                        if (window.hcaptcha) { clearInterval(check); resolve(); }
-                    }, 100);
-                    return;
-                }
-                hcaptchaLoaded = true;
-                const script = document.createElement('script');
-                script.src = 'https://js.hcaptcha.com/1/api.js?render=explicit';
-                script.async = true;
-                script.onload = () => resolve();
-                script.onerror = () => reject(new Error('Failed to load hCaptcha'));
-                document.head.appendChild(script);
-            });
-        }
-
-        function showCaptcha(sitekey) {
-            document.getElementById('credential-fields').classList.add('hidden');
-            document.getElementById('mfa-section').classList.remove('active');
-            document.getElementById('captcha-section').classList.add('active');
-            showLoginError('');
-
-            const container = document.getElementById('captcha-container');
-            container.innerHTML = '';
-
-            loadHcaptcha().then(() => {
-                hcaptcha.render(container, {
-                    sitekey,
-                    theme: 'dark',
-                    callback: token => {
-                        pendingCaptchaKey = token;
-                        // Auto-retry login with the solved captcha
-                        document.getElementById('captcha-section').classList.remove('active');
-                        document.getElementById('credential-fields').classList.remove('hidden');
-                        loginWithCredentials();
-                    },
-                    'error-callback': () => {
-                        showLoginError('CAPTCHA failed. Try again.');
-                    }
-                });
-            }).catch(err => {
-                showLoginError('Could not load CAPTCHA: ' + err.message);
-                document.getElementById('captcha-section').classList.remove('active');
-                document.getElementById('credential-fields').classList.remove('hidden');
-            });
-        }
-
         async function loginWithCredentials() {
             const email = credEmail.value.trim();
             const password = credPassword.value;
@@ -1026,17 +1025,11 @@
             credLoginBtn.textContent = 'Logging in...';
             showLoginError('');
 
-            const payload = { login: email, password };
-            if (pendingCaptchaKey) {
-                payload.captcha_key = pendingCaptchaKey;
-                pendingCaptchaKey = '';
-            }
-
             try {
                 const res = await fetch(`${getApiBase()}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ login: email, password })
                 });
                 const data = await res.json();
 
@@ -1048,14 +1041,13 @@
                 if (data.mfa || data.ticket) {
                     mfaTicket = data.ticket;
                     document.getElementById('credential-fields').classList.add('hidden');
-                    document.getElementById('captcha-section').classList.remove('active');
                     document.getElementById('mfa-section').classList.add('active');
                     mfaCodeInput.focus();
                     return;
                 }
 
-                if (data.captcha_key && data.captcha_sitekey) {
-                    showCaptcha(data.captcha_sitekey);
+                if (data.captcha_key) {
+                    showLoginError('CAPTCHA required. Use QR code or token login instead.');
                     return;
                 }
 
@@ -1066,6 +1058,463 @@
                 credLoginBtn.disabled = false;
                 credLoginBtn.textContent = 'Log In';
             }
+        }
+
+        // ── QR Code Remote Auth ──────────────────────────────
+        const qrStatus   = document.getElementById('qr-status');
+        const qrCanvas   = document.getElementById('qr-canvas');
+        const qrUserInfo = document.getElementById('qr-user-info');
+
+        function cleanupQrLogin() {
+            if (qrWebSocket) {
+                qrWebSocket.close();
+                qrWebSocket = null;
+            }
+            qrKeyPair = null;
+        }
+
+        async function startQrLogin() {
+            cleanupQrLogin();
+            qrStatus.className = '';
+            qrStatus.textContent = 'Generating...';
+            qrCanvas.style.display = 'none';
+            qrUserInfo.classList.remove('active');
+
+            try {
+                // Generate RSA-OAEP 2048-bit key pair
+                qrKeyPair = await crypto.subtle.generateKey(
+                    { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+                    true, ['encrypt', 'decrypt']
+                );
+
+                // Export public key as base64 SPKI
+                const pubDer = await crypto.subtle.exportKey('spki', qrKeyPair.publicKey);
+                const pubB64 = btoa(String.fromCharCode(...new Uint8Array(pubDer)));
+
+                // Connect to Discord's Remote Auth Gateway
+                qrStatus.textContent = 'Connecting...';
+                const ws = new WebSocket('wss://remote-auth-gateway.discord.gg/?v=2');
+                qrWebSocket = ws;
+                let heartbeatInterval = null;
+
+                ws.onclose = () => {
+                    clearInterval(heartbeatInterval);
+                    if (qrWebSocket === ws) {
+                        qrStatus.textContent = 'Disconnected. Switch tabs to retry.';
+                        qrStatus.className = 'error';
+                    }
+                };
+
+                ws.onerror = () => {
+                    qrStatus.textContent = 'Connection failed.';
+                    qrStatus.className = 'error';
+                };
+
+                ws.onmessage = async (event) => {
+                    const msg = JSON.parse(event.data);
+
+                    switch (msg.op) {
+                        case 'hello':
+                            // Start heartbeat
+                            heartbeatInterval = setInterval(() => {
+                                if (ws.readyState === WebSocket.OPEN) {
+                                    ws.send(JSON.stringify({ op: 'heartbeat' }));
+                                }
+                            }, msg.heartbeat_interval);
+                            // Send init with public key
+                            ws.send(JSON.stringify({ op: 'init', encoded_public_key: pubB64 }));
+                            break;
+
+                        case 'nonce_proof':
+                            try {
+                                // Decrypt the nonce with our private key
+                                const encNonce = Uint8Array.from(atob(msg.encrypted_nonce), c => c.charCodeAt(0));
+                                const decrypted = await crypto.subtle.decrypt(
+                                    { name: 'RSA-OAEP' }, qrKeyPair.privateKey, encNonce
+                                );
+                                // SHA-256 hash of the decrypted nonce
+                                const hash = await crypto.subtle.digest('SHA-256', decrypted);
+                                // Base64url encode the hash
+                                const proof = btoa(String.fromCharCode(...new Uint8Array(hash)))
+                                    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+                                ws.send(JSON.stringify({ op: 'nonce_proof', proof }));
+                            } catch (e) {
+                                qrStatus.textContent = 'Crypto error: ' + e.message;
+                                qrStatus.className = 'error';
+                            }
+                            break;
+
+                        case 'pending_remote_init':
+                            // We have the fingerprint — render QR code
+                            qrStatus.textContent = 'Scan with Discord mobile app';
+                            renderQrCode('https://discord.com/ra/' + msg.fingerprint);
+                            qrCanvas.style.display = 'block';
+                            break;
+
+                        case 'pending_ticket': {
+                            // User scanned — show their info, waiting for confirm
+                            try {
+                                const encPayload = Uint8Array.from(atob(msg.encrypted_user_payload), c => c.charCodeAt(0));
+                                const decPayload = await crypto.subtle.decrypt(
+                                    { name: 'RSA-OAEP' }, qrKeyPair.privateKey, encPayload
+                                );
+                                const userStr = new TextDecoder().decode(decPayload);
+                                // Format: "userId:discriminator:avatarHash:username"
+                                const parts = userStr.split(':');
+                                const userId = parts[0];
+                                const avatarHash = parts[2];
+                                const username = parts.slice(3).join(':');
+
+                                qrCanvas.style.display = 'none';
+                                qrUserInfo.classList.add('active');
+                                document.getElementById('qr-username').textContent = username;
+                                if (avatarHash) {
+                                    document.getElementById('qr-avatar').src =
+                                        `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png?size=128`;
+                                }
+                                qrStatus.textContent = 'Confirm on your phone...';
+                                qrStatus.className = 'success';
+                            } catch (_) {
+                                qrStatus.textContent = 'Waiting for confirmation...';
+                            }
+                            break;
+                        }
+
+                        case 'pending_login': {
+                            // User confirmed — exchange ticket for token
+                            qrStatus.textContent = 'Logging in...';
+                            try {
+                                const res = await fetch(`${getApiBase()}/users/@me/remote-auth/login`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ ticket: msg.ticket })
+                                });
+                                const data = await res.json();
+                                if (data.encrypted_token) {
+                                    const encToken = Uint8Array.from(atob(data.encrypted_token), c => c.charCodeAt(0));
+                                    const decToken = await crypto.subtle.decrypt(
+                                        { name: 'RSA-OAEP' }, qrKeyPair.privateKey, encToken
+                                    );
+                                    const token = new TextDecoder().decode(decToken);
+                                    cleanupQrLogin();
+                                    connect(token);
+                                } else {
+                                    throw new Error(data.message || 'No token received');
+                                }
+                            } catch (e) {
+                                qrStatus.textContent = 'Login failed: ' + e.message;
+                                qrStatus.className = 'error';
+                            }
+                            break;
+                        }
+
+                        case 'cancel':
+                            qrStatus.textContent = 'Login cancelled. Switch tabs to retry.';
+                            qrStatus.className = 'error';
+                            qrCanvas.style.display = 'none';
+                            qrUserInfo.classList.remove('active');
+                            break;
+
+                        case 'heartbeat_ack':
+                            break; // expected, ignore
+                    }
+                };
+            } catch (err) {
+                qrStatus.textContent = 'Failed: ' + err.message;
+                qrStatus.className = 'error';
+            }
+        }
+
+        // ── Minimal QR Code Renderer ─────────────────────────
+        // Generates a QR code on canvas without external libraries.
+        // Uses a numeric+alphanumeric encoding with Reed-Solomon ECC.
+        // For simplicity, delegates to a tiny inline generator.
+        function renderQrCode(text) {
+            // We use the QR code generation via the established qr-creator approach:
+            // encode data into modules, then paint onto canvas.
+            // To keep this truly self-contained, we use a compact QR encoder.
+            const canvas = qrCanvas;
+            const ctx = canvas.getContext('2d');
+            const modules = generateQR(text);
+            const size = modules.length;
+            const scale = Math.floor(200 / size);
+            canvas.width = size * scale;
+            canvas.height = size * scale;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000000';
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    if (modules[y][x]) {
+                        ctx.fillRect(x * scale, y * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        // Compact QR Code generator (version auto-select, ECC level L)
+        // Based on the QR code specification — generates the module matrix.
+        function generateQR(data) {
+            // Use byte mode encoding
+            const dataBytes = new TextEncoder().encode(data);
+            const dataLen = dataBytes.length;
+
+            // Version selection (1-40) — find smallest version that fits at ECC L
+            const capacityL = [0,17,32,53,78,106,134,154,192,230,271,321,367,425,458,520,586,644,718,792,858,929,1003,1091,1171,1273,1367,1465,1528,1628,1732,1840,1952,2068,2188,2303,2431,2563,2699,2809,2953];
+            let version = 1;
+            for (let v = 1; v <= 40; v++) {
+                if (capacityL[v] >= dataLen + 3) { version = v; break; }
+            }
+            const size = version * 4 + 17;
+
+            // Total data codewords for this version at ECC L
+            const totalCW = getDataCodewords(version);
+            const eccCW = getEccCodewords(version);
+            const dataCW = totalCW - eccCW;
+
+            // Encode data: mode(4 bits) + count + data + terminator + padding
+            const bits = [];
+            pushBits(bits, 0b0100, 4); // byte mode
+            const countLen = version <= 9 ? 8 : 16;
+            pushBits(bits, dataLen, countLen);
+            for (const b of dataBytes) pushBits(bits, b, 8);
+            // Terminator
+            const maxBits = dataCW * 8;
+            const termLen = Math.min(4, maxBits - bits.length);
+            pushBits(bits, 0, termLen);
+            // Byte-align
+            while (bits.length % 8 !== 0) bits.push(0);
+            // Pad bytes
+            let pad = 0;
+            while (bits.length < maxBits) {
+                pushBits(bits, pad === 0 ? 0xEC : 0x11, 8);
+                pad ^= 1;
+            }
+
+            // Convert bits to bytes
+            const dataCodewords = [];
+            for (let i = 0; i < bits.length; i += 8) {
+                let byte = 0;
+                for (let j = 0; j < 8; j++) byte = (byte << 1) | (bits[i + j] || 0);
+                dataCodewords.push(byte);
+            }
+
+            // Reed-Solomon ECC
+            const ecBytes = rsEncode(dataCodewords, eccCW);
+            const allBytes = [...dataCodewords, ...ecBytes];
+
+            // Create module matrix
+            const grid = Array.from({ length: size }, () => Array(size).fill(null));
+            const reserved = Array.from({ length: size }, () => Array(size).fill(false));
+
+            // Place finder patterns
+            placeFinder(grid, reserved, 0, 0);
+            placeFinder(grid, reserved, size - 7, 0);
+            placeFinder(grid, reserved, 0, size - 7);
+
+            // Timing patterns
+            for (let i = 8; i < size - 8; i++) {
+                grid[6][i] = i % 2 === 0 ? 1 : 0;
+                grid[i][6] = i % 2 === 0 ? 1 : 0;
+                reserved[6][i] = true;
+                reserved[i][6] = true;
+            }
+
+            // Alignment patterns
+            if (version >= 2) {
+                const positions = getAlignmentPositions(version);
+                for (const r of positions) {
+                    for (const c of positions) {
+                        if (reserved[r]?.[c]) continue;
+                        if ((r < 9 && c < 9) || (r < 9 && c >= size - 8) || (r >= size - 8 && c < 9)) continue;
+                        placeAlignment(grid, reserved, r, c);
+                    }
+                }
+            }
+
+            // Reserve format & version areas
+            for (let i = 0; i < 8; i++) {
+                reserved[8][i] = true; reserved[i][8] = true;
+                reserved[8][size - 1 - i] = true; reserved[size - 1 - i][8] = true;
+            }
+            reserved[8][8] = true;
+            grid[size - 8][8] = 1; reserved[size - 8][8] = true; // dark module
+
+            if (version >= 7) {
+                for (let i = 0; i < 6; i++) for (let j = 0; j < 3; j++) {
+                    reserved[i][size - 11 + j] = true;
+                    reserved[size - 11 + j][i] = true;
+                }
+            }
+
+            // Place data bits
+            let bitIdx = 0;
+            const allBits = [];
+            for (const byte of allBytes) for (let b = 7; b >= 0; b--) allBits.push((byte >> b) & 1);
+
+            let right = size - 1;
+            let upward = true;
+            while (right >= 0) {
+                if (right === 6) right--; // skip timing column
+                for (let row = 0; row < size; row++) {
+                    const y = upward ? size - 1 - row : row;
+                    for (const dx of [0, -1]) {
+                        const x = right + dx;
+                        if (x < 0 || x >= size) continue;
+                        if (reserved[y][x]) continue;
+                        grid[y][x] = bitIdx < allBits.length ? allBits[bitIdx++] : 0;
+                    }
+                }
+                upward = !upward;
+                right -= 2;
+            }
+
+            // Apply mask 0 (checkerboard) and format info
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    if (!reserved[y][x] && (y + x) % 2 === 0) {
+                        grid[y][x] ^= 1;
+                    }
+                }
+            }
+
+            // Write format bits (ECC L + mask 0 = 0b01_000, format = ...)
+            const formatBits = getFormatBits(0); // mask 0, ECC L
+            for (let i = 0; i < 15; i++) {
+                const bit = (formatBits >> (14 - i)) & 1;
+                // Around top-left finder
+                if (i < 6) grid[8][i] = bit;
+                else if (i === 6) grid[8][7] = bit;
+                else if (i === 7) grid[8][8] = bit;
+                else if (i === 8) grid[7][8] = bit;
+                else grid[14 - i][8] = bit;
+
+                // Around other finders
+                if (i < 8) grid[size - 1 - i][8] = bit;
+                else grid[8][size - 15 + i] = bit;
+            }
+
+            // Version info (v7+)
+            if (version >= 7) {
+                const vInfo = getVersionBits(version);
+                for (let i = 0; i < 18; i++) {
+                    const bit = (vInfo >> i) & 1;
+                    const r = Math.floor(i / 3), c = i % 3;
+                    grid[r][size - 11 + c] = bit;
+                    grid[size - 11 + c][r] = bit;
+                }
+            }
+
+            return grid;
+        }
+
+        function pushBits(arr, value, len) {
+            for (let i = len - 1; i >= 0; i--) arr.push((value >> i) & 1);
+        }
+
+        function placeFinder(grid, reserved, row, col) {
+            for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+                const y = row + r, x = col + c;
+                if (y < 0 || x < 0 || y >= grid.length || x >= grid.length) continue;
+                const inOuter = r === 0 || r === 6 || c === 0 || c === 6;
+                const inInner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+                grid[y][x] = (inOuter || inInner) && r >= 0 && r <= 6 && c >= 0 && c <= 6 ? 1 : 0;
+                reserved[y][x] = true;
+            }
+        }
+
+        function placeAlignment(grid, reserved, row, col) {
+            for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) {
+                const y = row + r, x = col + c;
+                if (y < 0 || x < 0 || y >= grid.length || x >= grid.length) continue;
+                grid[y][x] = (Math.abs(r) === 2 || Math.abs(c) === 2 || (r === 0 && c === 0)) ? 1 : 0;
+                reserved[y][x] = true;
+            }
+        }
+
+        function getAlignmentPositions(version) {
+            if (version === 1) return [];
+            const intervals = [0,0,0,0,0,0,0,16,18,20,22,24,26,28,20,22,24,24,26,28,28,22,24,24,26,26,28,28,24,24,26,26,26,28,28,24,26,26,26,28,28];
+            const step = intervals[version] || 28;
+            const last = version * 4 + 10;
+            const positions = [6];
+            let pos = last;
+            while (pos > 6 + step) { positions.unshift(pos); pos -= step; }
+            if (positions[0] !== 6) positions.unshift(6);
+            if (positions[positions.length - 1] !== last) positions.push(last);
+            // Deduplicate and sort
+            return [...new Set(positions)].sort((a, b) => a - b);
+        }
+
+        // Total codewords and ECC codewords per version (ECC level L)
+        function getDataCodewords(version) {
+            const total = [0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706];
+            return total[version] || 0;
+        }
+
+        function getEccCodewords(version) {
+            const ecc = [0,7,10,15,20,26,36,40,48,60,72,80,92,104,112,128,144,160,176,198,216,224,252,270,300,312,336,360,390,420,450,480,510,540,570,570,600,630,660,720,750];
+            return ecc[version] || 0;
+        }
+
+        // Reed-Solomon encoding over GF(256)
+        function rsEncode(data, eccCount) {
+            const gfExp = new Uint8Array(512);
+            const gfLog = new Uint8Array(256);
+            let x = 1;
+            for (let i = 0; i < 255; i++) {
+                gfExp[i] = x;
+                gfLog[x] = i;
+                x = (x << 1) ^ (x >= 128 ? 0x11d : 0);
+            }
+            for (let i = 255; i < 512; i++) gfExp[i] = gfExp[i - 255];
+
+            function gfMul(a, b) {
+                if (a === 0 || b === 0) return 0;
+                return gfExp[gfLog[a] + gfLog[b]];
+            }
+
+            // Generator polynomial
+            let gen = [1];
+            for (let i = 0; i < eccCount; i++) {
+                const next = new Array(gen.length + 1).fill(0);
+                for (let j = 0; j < gen.length; j++) {
+                    next[j] ^= gen[j];
+                    next[j + 1] ^= gfMul(gen[j], gfExp[i]);
+                }
+                gen = next;
+            }
+
+            const result = new Array(eccCount).fill(0);
+            for (const byte of data) {
+                const lead = byte ^ result[0];
+                for (let i = 0; i < eccCount - 1; i++) {
+                    result[i] = result[i + 1] ^ gfMul(lead, gen[i + 1]);
+                }
+                result[eccCount - 1] = gfMul(lead, gen[eccCount]);
+            }
+            return result;
+        }
+
+        function getFormatBits(mask) {
+            // ECC L = 01, mask pattern
+            const data = (0b01 << 3) | mask;
+            let bits = data << 10;
+            let gen = 0b10100110111;
+            for (let i = 14; i >= 10; i--) {
+                if (bits & (1 << i)) bits ^= gen << (i - 10);
+            }
+            bits = ((data << 10) | bits) ^ 0b101010000010010;
+            return bits;
+        }
+
+        function getVersionBits(version) {
+            let bits = version << 12;
+            let gen = 0b1111100100101;
+            for (let i = 17; i >= 12; i--) {
+                if (bits & (1 << i)) bits ^= gen << (i - 12);
+            }
+            return (version << 12) | bits;
         }
 
         // ── MFA ──────────────────────────────────────────────
