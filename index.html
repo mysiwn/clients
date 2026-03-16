@@ -114,6 +114,8 @@
 
         #mfa-section { display: none; }
         #mfa-section.active { display: flex; flex-direction: column; gap: 10px; }
+        #captcha-section { display: none; }
+        #captcha-section.active { display: flex; flex-direction: column; gap: 10px; align-items: center; }
         #credential-fields.hidden { display: none; }
 
         .mfa-toggle {
@@ -687,6 +689,10 @@
                     <button id="mfa-submit-button" style="width:100%">Verify</button>
                     <button class="mfa-toggle" id="mfa-toggle-backup">Use a backup code instead</button>
                 </div>
+                <div id="captcha-section">
+                    <span class="login-label">Complete the CAPTCHA</span>
+                    <div id="captcha-container"></div>
+                </div>
             </div>
 
             <div class="notice">
@@ -816,6 +822,8 @@
         let currentGuildChannels = {}; // guildId -> [channel objects]
         let mfaTicket        = '';
         let mfaIsBackup      = false;
+        let pendingCaptchaKey = '';
+        let hcaptchaLoaded   = false;
 
         function loadReadState() {
             try {
@@ -935,10 +943,15 @@
         function resetMfaState() {
             mfaTicket = '';
             mfaIsBackup = false;
+            pendingCaptchaKey = '';
             document.getElementById('mfa-section').classList.remove('active');
+            document.getElementById('captcha-section').classList.remove('active');
             document.getElementById('credential-fields').classList.remove('hidden');
             document.getElementById('mfa-code').value = '';
             document.getElementById('mfa-toggle-backup').textContent = 'Use a backup code instead';
+            // Clean up hCaptcha widget if present
+            const container = document.getElementById('captcha-container');
+            if (container) container.innerHTML = '';
         }
 
         // ── Credential Login ─────────────────────────────────
@@ -952,6 +965,58 @@
         credLoginBtn.addEventListener('click', () => loginWithCredentials());
         credPassword.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithCredentials(); });
 
+        // ── hCaptcha loader ──────────────────────────────────
+        function loadHcaptcha() {
+            return new Promise((resolve, reject) => {
+                if (window.hcaptcha) { resolve(); return; }
+                if (hcaptchaLoaded) {
+                    // Script is loading, poll for it
+                    const check = setInterval(() => {
+                        if (window.hcaptcha) { clearInterval(check); resolve(); }
+                    }, 100);
+                    return;
+                }
+                hcaptchaLoaded = true;
+                const script = document.createElement('script');
+                script.src = 'https://js.hcaptcha.com/1/api.js?render=explicit';
+                script.async = true;
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error('Failed to load hCaptcha'));
+                document.head.appendChild(script);
+            });
+        }
+
+        function showCaptcha(sitekey) {
+            document.getElementById('credential-fields').classList.add('hidden');
+            document.getElementById('mfa-section').classList.remove('active');
+            document.getElementById('captcha-section').classList.add('active');
+            showLoginError('');
+
+            const container = document.getElementById('captcha-container');
+            container.innerHTML = '';
+
+            loadHcaptcha().then(() => {
+                hcaptcha.render(container, {
+                    sitekey,
+                    theme: 'dark',
+                    callback: token => {
+                        pendingCaptchaKey = token;
+                        // Auto-retry login with the solved captcha
+                        document.getElementById('captcha-section').classList.remove('active');
+                        document.getElementById('credential-fields').classList.remove('hidden');
+                        loginWithCredentials();
+                    },
+                    'error-callback': () => {
+                        showLoginError('CAPTCHA failed. Try again.');
+                    }
+                });
+            }).catch(err => {
+                showLoginError('Could not load CAPTCHA: ' + err.message);
+                document.getElementById('captcha-section').classList.remove('active');
+                document.getElementById('credential-fields').classList.remove('hidden');
+            });
+        }
+
         async function loginWithCredentials() {
             const email = credEmail.value.trim();
             const password = credPassword.value;
@@ -961,11 +1026,17 @@
             credLoginBtn.textContent = 'Logging in...';
             showLoginError('');
 
+            const payload = { login: email, password };
+            if (pendingCaptchaKey) {
+                payload.captcha_key = pendingCaptchaKey;
+                pendingCaptchaKey = '';
+            }
+
             try {
                 const res = await fetch(`${getApiBase()}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ login: email, password })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
 
@@ -977,13 +1048,14 @@
                 if (data.mfa || data.ticket) {
                     mfaTicket = data.ticket;
                     document.getElementById('credential-fields').classList.add('hidden');
+                    document.getElementById('captcha-section').classList.remove('active');
                     document.getElementById('mfa-section').classList.add('active');
                     mfaCodeInput.focus();
                     return;
                 }
 
-                if (data.captcha_key) {
-                    showLoginError('CAPTCHA required. Use token login instead.');
+                if (data.captcha_key && data.captcha_sitekey) {
+                    showCaptcha(data.captcha_sitekey);
                     return;
                 }
 
