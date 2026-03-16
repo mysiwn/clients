@@ -4,6 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Discord Client">
+    <meta name="theme-color" content="#36393f">
+    <meta name="application-name" content="Discord Client">
     <title>Local Discord Client</title>
     <script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous"></script>
     <style>
@@ -1708,6 +1714,117 @@
 
         // ── Sync refresh input ───────────────────────────────
         document.getElementById('setting-refresh').value = settings.refreshInterval;
+
+        // ── PWA: Inline Manifest ─────────────────────────────
+        // Generate an SVG icon as a data URI (no external files needed)
+        const pwaIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+            <rect width="512" height="512" rx="96" fill="#5865f2"/>
+            <path d="M346 218c-14-7-29-12-45-15l-5 11c-17-3-34-3-51 0l-5-11c-16 3-31 8-45 15-29 42-36 84-32 124 20 15 39 24 58 30l7-10-2-1c-11-5-21-12-31-19l4-3c51 24 107 24 157 0l4 3c-10 7-20 14-31 19l-2 1 7 10c19-6 39-15 58-30 5-47-8-88-32-124z" fill="#fff"/>
+            <circle cx="215" cy="295" r="25" fill="#5865f2"/>
+            <circle cx="297" cy="295" r="25" fill="#5865f2"/>
+        </svg>`;
+        const pwaIconUrl = 'data:image/svg+xml;base64,' + btoa(pwaIconSvg);
+
+        const manifest = {
+            name: 'Local Discord Client',
+            short_name: 'Discord',
+            description: 'A static Discord client that runs through a CORS proxy.',
+            start_url: './',
+            display: 'standalone',
+            background_color: '#36393f',
+            theme_color: '#36393f',
+            icons: [
+                { src: pwaIconUrl, sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
+            ]
+        };
+
+        const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+        const manifestUrl = URL.createObjectURL(manifestBlob);
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = manifestUrl;
+        document.head.appendChild(manifestLink);
+
+        // Also set the apple-touch-icon
+        const appleIcon = document.createElement('link');
+        appleIcon.rel = 'apple-touch-icon';
+        appleIcon.href = pwaIconUrl;
+        document.head.appendChild(appleIcon);
+
+        // ── PWA: Inline Service Worker ───────────────────────
+        const swCode = `
+            const CACHE_NAME = 'discord-client-v1';
+            const SHELL_URLS = [self.registration.scope];
+
+            self.addEventListener('install', event => {
+                event.waitUntil(
+                    caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_URLS))
+                );
+                self.skipWaiting();
+            });
+
+            self.addEventListener('activate', event => {
+                event.waitUntil(
+                    caches.keys().then(keys =>
+                        Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+                    )
+                );
+                self.clients.claim();
+            });
+
+            self.addEventListener('fetch', event => {
+                const url = new URL(event.request.url);
+
+                // Only cache-first for navigation (the HTML shell itself)
+                if (event.request.mode === 'navigate') {
+                    event.respondWith(
+                        caches.match(event.request).then(cached => {
+                            // Serve cached shell, update in background
+                            const fetchPromise = fetch(event.request).then(response => {
+                                if (response.ok) {
+                                    caches.open(CACHE_NAME).then(cache =>
+                                        cache.put(event.request, response)
+                                    );
+                                }
+                                return response.clone();
+                            }).catch(() => cached);
+
+                            return cached || fetchPromise;
+                        })
+                    );
+                    return;
+                }
+
+                // For image proxy responses, cache them client-side long-term
+                if (url.pathname === '/image') {
+                    event.respondWith(
+                        caches.open('discord-media-v1').then(cache =>
+                            cache.match(event.request).then(cached => {
+                                if (cached) return cached;
+                                return fetch(event.request).then(response => {
+                                    if (response.ok) {
+                                        cache.put(event.request, response.clone());
+                                    }
+                                    return response;
+                                });
+                            })
+                        )
+                    );
+                    return;
+                }
+
+                // Everything else (API calls, CDN) goes to network
+            });
+        `;
+
+        if ('serviceWorker' in navigator) {
+            const swBlob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(swBlob);
+            navigator.serviceWorker.register(swUrl, { scope: './' }).catch(() => {
+                // Blob SW registration fails in some browsers due to origin restrictions.
+                // The app still works fine without it -- just no offline caching.
+            });
+        }
 
         // ── Start ────────────────────────────────────────────
         init();
