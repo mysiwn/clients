@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Worker Example</title>
+</head>
+<body>
+  <h1>Web Worker Example</h1>
+  <script>
+    const worker = new Worker('worker.js');
+    worker.postMessage('hello');
+    worker.onmessage = (e) => console.log('From worker:', e.data);
+  </script>
+</body>
+</html>
