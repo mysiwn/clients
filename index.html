@@ -1,15 +1,1116 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Worker Example</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Discord Client</title>
+    <script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            background-color: #36393f;
+            color: #dcddde;
+        }
+
+        /* ── Login ─────────────────────────────────────────── */
+        #login-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            background-color: #2f3136;
+        }
+
+        .login-box {
+            background-color: #36393f;
+            padding: 40px 48px;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            min-width: 340px;
+        }
+
+        .login-box h2 {
+            margin: 0 0 2px;
+            color: #fff;
+            font-size: 1.5rem;
+            letter-spacing: 0.01em;
+        }
+
+        .login-box p {
+            margin: 0;
+            color: #b9bbbe;
+            font-size: 0.85rem;
+        }
+
+        #token-input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 5px;
+            border: none;
+            background-color: #202225;
+            color: #dcddde;
+            outline: none;
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+
+        #token-input:focus { box-shadow: 0 0 0 2px #5865f2; }
+
+        .notice {
+            font-size: 0.78em;
+            color: #f7aaaa;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+
+        /* ── App Layout ─────────────────────────────────────── */
+        #app { display: none; width: 100%; }
+
+        .sidebar {
+            width: 250px;
+            min-width: 180px;
+            background-color: #2f3136;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .guilds {
+            padding: 8px;
+            height: 40%;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .resizer-y {
+            height: 4px;
+            background-color: #202225;
+            cursor: ns-resize;
+            flex-shrink: 0;
+            transition: background-color 0.15s;
+        }
+
+        .resizer-y:hover,
+        .resizer-y.dragging { background-color: #5865f2; }
+
+        .channels {
+            padding: 8px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #36393f;
+            min-width: 0;
+        }
+
+        /* ── Header ─────────────────────────────────────────── */
+        .header {
+            height: 48px;
+            border-bottom: 1px solid #202225;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            font-weight: 600;
+            color: #fff;
+            flex-shrink: 0;
+            gap: 8px;
+        }
+
+        /* ── Messages ───────────────────────────────────────── */
+        .messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message {
+            padding: 4px 8px;
+            margin: 0 -8px;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            transition: background-color 0.08s;
+        }
+
+        .message:hover { background-color: #32353b; }
+        .message + .message { margin-top: 10px; }
+
+        .message-header {
+            margin-bottom: 2px;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .message .author {
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .message .author:hover { text-decoration: underline; }
+
+        .message .timestamp {
+            font-size: 0.7rem;
+            color: #72767d;
+        }
+
+        .message .content {
+            line-height: 1.375rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* ── Input Area ─────────────────────────────────────── */
+        .input-area {
+            padding: 10px 16px 16px;
+            display: flex;
+            align-items: stretch;
+            flex-shrink: 0;
+        }
+
+        #message-input {
+            flex-grow: 1;
+            padding: 11px 14px;
+            border-radius: 0 5px 5px 0;
+            border: none;
+            background-color: #40444b;
+            color: #dcddde;
+            outline: none;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: background-color 0.1s;
+        }
+
+        #message-input:focus { background-color: #454a52; }
+
+        /* ── Buttons ────────────────────────────────────────── */
+        button {
+            padding: 10px 20px;
+            border-radius: 3px;
+            border: none;
+            background-color: #5865f2;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: background-color 0.15s;
+        }
+
+        button:hover:not(:disabled) { background-color: #4752c4; }
+        button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        #send-button { border-radius: 0 3px 3px 0; margin-left: 6px; }
+
+        .settings-btn {
+            background: none;
+            color: #b9bbbe;
+            padding: 5px 10px;
+            margin-left: auto;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            white-space: nowrap;
+        }
+
+        .settings-btn:hover { background: #3c3f45; color: #fff; }
+
+        /* ── Sidebar Items ──────────────────────────────────── */
+        .sidebar-label {
+            color: #72767d;
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            padding: 12px 4px 4px;
+        }
+
+        .guild-item,
+        .channel-item {
+            padding: 7px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-bottom: 1px;
+            color: #8e9297;
+            font-size: 0.9rem;
+            transition: background-color 0.1s, color 0.1s;
+            user-select: none;
+        }
+
+        .guild-item:hover,
+        .channel-item:hover { background-color: #393c43; color: #dcddde; }
+
+        .guild-item.active,
+        .channel-item.active { background-color: #40444b; color: #fff; font-weight: 500; }
+
+        /* ── Scrollbar ──────────────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #1e2124; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2a2d31; }
+
+        /* ── Placeholder States ─────────────────────────────── */
+        .placeholder {
+            text-align: center;
+            color: #72767d;
+            margin: auto;
+            font-size: 0.9rem;
+            padding: 20px;
+        }
+
+        .placeholder.error { color: #ed4245; }
+
+        /* ── Settings Modal ─────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal {
+            background-color: #2f3136;
+            border: 1px solid #26282c;
+            padding: 24px;
+            border-radius: 8px;
+            width: 420px;
+            max-width: 90vw;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal h3 { margin: 0; color: #fff; font-size: 1.1rem; }
+
+        .modal label {
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: #b9bbbe;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .modal input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 4px;
+            border: none;
+            background-color: #202225;
+            color: #dcddde;
+            outline: none;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .modal input[type="number"]:focus { box-shadow: 0 0 0 2px #5865f2; }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .btn-cancel { background: transparent; color: #b9bbbe; }
+        .btn-cancel:hover { background: transparent; color: #fff; text-decoration: underline; }
+
+        .blocked-list-ui {
+            background: #202225;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            max-height: 90px;
+            overflow-y: auto;
+        }
+
+        .blocked-none { color: #72767d; font-size: 12px; }
+
+        .blocked-item-ui {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 0;
+        }
+
+        .unblock-btn {
+            background: #ed4245;
+            padding: 2px 8px;
+            font-size: 11px;
+            border-radius: 3px;
+            cursor: pointer;
+            color: #fff;
+            border: none;
+            font-family: inherit;
+        }
+
+        .unblock-btn:hover { background: #c03537; }
+
+        /* ── Context Menu ───────────────────────────────────── */
+        .context-menu {
+            position: fixed;
+            background: #18191c;
+            border: 1px solid #2c2d31;
+            border-radius: 4px;
+            padding: 4px;
+            min-width: 150px;
+            z-index: 2000;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        .context-item {
+            color: #ed4245;
+            padding: 8px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        .context-item:hover { background: #ed4245; color: #fff; }
+
+        /* ── File Upload ────────────────────────────────────── */
+        .file-upload-btn {
+            background-color: #40444b;
+            color: #8e9297;
+            border-radius: 5px 0 0 5px;
+            padding: 0 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            line-height: 1;
+            transition: background-color 0.1s, color 0.1s;
+            border-right: 1px solid #36393f;
+            flex-shrink: 0;
+        }
+
+        .file-upload-btn:hover { background-color: #4a4f57; color: #dcddde; }
+        .file-upload-btn.active { color: #5865f2; }
+
+        /* ── Attachments ────────────────────────────────────── */
+        .attachment-preview {
+            max-width: 420px;
+            max-height: 300px;
+            border-radius: 4px;
+            margin-top: 6px;
+            display: block;
+            background: #202225;
+        }
+
+        .attachment-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 8px 12px;
+            background: #2f3136;
+            border: 1px solid #26282c;
+            border-radius: 4px;
+            color: #00aff4;
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: background-color 0.1s;
+        }
+
+        .attachment-link:hover { background: #393c43; text-decoration: underline; }
+
+        .download-link {
+            display: inline-block;
+            margin-top: 4px;
+            color: #00aff4;
+            font-size: 0.75rem;
+            text-decoration: none;
+            opacity: 0.8;
+        }
+
+        .download-link:hover { opacity: 1; text-decoration: underline; }
+
+        /* ── Twemoji ────────────────────────────────────────── */
+        img.twemoji {
+            height: 1.375em;
+            width: 1.375em;
+            vertical-align: -0.3em;
+            display: inline;
+        }
+    </style>
 </head>
+
 <body>
-  <h1>Web Worker Example</h1>
-  <script>
-    const worker = new Worker('worker.js');
-    worker.postMessage('hello');
-    worker.onmessage = (e) => console.log('From worker:', e.data);
-  </script>
+
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>Settings</h3>
+            <div>
+                <label>Auto-Refresh Interval (seconds, 0 to disable)</label>
+                <input type="number" id="setting-refresh" min="0" value="0">
+            </div>
+            <div>
+                <label>Blocked Users</label>
+                <div id="blocked-users-list" class="blocked-list-ui"></div>
+            </div>
+            <div>
+                <label>Blocked Servers</label>
+                <div id="blocked-servers-list" class="blocked-list-ui"></div>
+            </div>
+            <div>
+                <label>Blocked Channels</label>
+                <div id="blocked-channels-list" class="blocked-list-ui"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeSettings()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="context-menu" class="context-menu" style="display:none">
+        <div id="block-action" class="context-item">Block</div>
+    </div>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>Local Client</h2>
+            <p>Sign in with your Discord user token.</p>
+            <input type="password" id="token-input" placeholder="Token">
+            <button id="login-button" style="width:100%">Connect</button>
+            <div class="notice">
+                Requests route through a CORS proxy. Requires the proxy to be reachable from your network.
+            </div>
+        </div>
+    </div>
+
+    <div id="app">
+        <div class="sidebar">
+            <div class="guilds" id="guild-list"></div>
+            <div class="resizer-y" id="resizer"></div>
+            <div class="channels" id="channel-list"></div>
+        </div>
+        <div class="main">
+            <div class="header" id="chat-header">
+                <span id="chat-title">Select a channel</span>
+                <button class="settings-btn" onclick="openSettings()">⚙ Settings</button>
+            </div>
+            <div class="messages" id="message-list"></div>
+            <div class="input-area">
+                <input type="file" id="file-input" style="display:none">
+                <label for="file-input" class="file-upload-btn" id="file-btn" style="pointer-events:none;opacity:0.4">+</label>
+                <input type="text" id="message-input" placeholder="Message…" disabled>
+                <button id="send-button" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Config ────────────────────────────────────────────
+        const API_BASE   = 'https://cors-proxy.mysiwn.workers.dev/https://discord.com/api/v9';
+        const PROXY_BASE = 'https://cors-proxy.mysiwn.workers.dev';
+        const CORS_KEY   = 'sw1xuwulol';
+
+        // ── State ─────────────────────────────────────────────
+        let userToken        = '';
+        let currentChannelId = null;
+        let refreshTimeout   = null;
+        let isConnecting     = false;
+        let currentView      = 'dm'; // 'dm' | 'guild'
+        let activeBlobUrls   = [];   // tracked for revocation on message clear
+
+        // ── DOM Refs ──────────────────────────────────────────
+        const loginScreen  = document.getElementById('login-screen');
+        const appScreen    = document.getElementById('app');
+        const tokenInput   = document.getElementById('token-input');
+        const loginButton  = document.getElementById('login-button');
+        const guildList    = document.getElementById('guild-list');
+        const channelList  = document.getElementById('channel-list');
+        const messageList  = document.getElementById('message-list');
+        const messageInput = document.getElementById('message-input');
+        const sendButton   = document.getElementById('send-button');
+        const chatTitle    = document.getElementById('chat-title');
+        const fileInput    = document.getElementById('file-input');
+        const fileBtn      = document.getElementById('file-btn');
+        const contextMenu  = document.getElementById('context-menu');
+        const blockAction  = document.getElementById('block-action');
+
+        // ── Settings ──────────────────────────────────────────
+        let settings = {
+            refreshInterval: 0,
+            blockedUsers:    [],
+            blockedServers:  [],
+            blockedChannels: []
+        };
+
+        function loadSettings() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('discord_settings'));
+                if (saved && typeof saved === 'object') settings = { ...settings, ...saved };
+            } catch (_) {}
+        }
+        loadSettings();
+        // Sync the input to the persisted value immediately so it's correct when the modal opens
+        document.getElementById('setting-refresh').value = settings.refreshInterval;
+
+        function saveSettings() {
+            localStorage.setItem('discord_settings', JSON.stringify(settings));
+            if (!userToken) return;
+            loadGuilds();
+            if (currentChannelId) {
+                loadMessages(currentChannelId);
+            } else if (currentView === 'dm') {
+                loadDMs();
+            }
+            startAutoRefresh();
+        }
+
+        function isBlocked(list, id) {
+            return list.some(item => String(item.id) === String(id));
+        }
+
+        // ── Settings Modal ───────────────────────────────────
+        function renderBlockedList(containerId, list, typeKey) {
+            const container = document.getElementById(containerId);
+            if (!list?.length) {
+                container.innerHTML = '<span class="blocked-none">None</span>';
+                return;
+            }
+            container.innerHTML = '';
+            list.forEach(item => {
+                const row      = document.createElement('div');
+                row.className  = 'blocked-item-ui';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = item.name || item.id;
+                const btn     = document.createElement('button');
+                btn.className = 'unblock-btn';
+                btn.textContent = 'Unblock';
+                btn.onclick = () => {
+                    settings[typeKey] = settings[typeKey].filter(i => i.id !== item.id);
+                    saveSettings();
+                    renderBlockedList(containerId, settings[typeKey], typeKey);
+                };
+                row.append(nameSpan, btn);
+                container.appendChild(row);
+            });
+        }
+
+        function openSettings() {
+            document.getElementById('setting-refresh').value = settings.refreshInterval;
+            renderBlockedList('blocked-users-list',    settings.blockedUsers,    'blockedUsers');
+            renderBlockedList('blocked-servers-list',  settings.blockedServers,  'blockedServers');
+            renderBlockedList('blocked-channels-list', settings.blockedChannels, 'blockedChannels');
+            document.getElementById('settings-modal').style.display = 'flex';
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        document.getElementById('setting-refresh').addEventListener('change', e => {
+            settings.refreshInterval = parseInt(e.target.value) || 0;
+            saveSettings();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                closeSettings();
+                contextMenu.style.display = 'none';
+            }
+        });
+
+        // ── Context Menu ─────────────────────────────────────
+        let currentContextTarget = null;
+
+        document.addEventListener('click', () => { contextMenu.style.display = 'none'; });
+
+        function showContextMenu(e, type, id, name) {
+            e.preventDefault();
+            currentContextTarget = { type, id, name };
+            const labels = { user: 'User', server: 'Server', channel: 'Channel' };
+            blockAction.textContent = `Block ${labels[type] ?? type}`;
+            contextMenu.style.cssText = `display:block;left:${e.pageX}px;top:${e.pageY}px`;
+        }
+
+        blockAction.addEventListener('click', () => {
+            if (!currentContextTarget) return;
+            const { type, id, name } = currentContextTarget;
+            const keyMap = { user: 'blockedUsers', server: 'blockedServers', channel: 'blockedChannels' };
+            const key    = keyMap[type];
+            if (key && !settings[key].some(i => i.id === id)) {
+                settings[key].push({ id, name });
+                saveSettings();
+            }
+        });
+
+        // ── Auto Refresh ─────────────────────────────────────
+        function startAutoRefresh() {
+            clearTimeout(refreshTimeout);
+            if (settings.refreshInterval > 0 && userToken) {
+                refreshTimeout = setTimeout(() => {
+                    if (currentChannelId) loadMessages(currentChannelId, true);
+                    startAutoRefresh();
+                }, settings.refreshInterval * 1000);
+            }
+        }
+
+        // ── File Input ───────────────────────────────────────
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                fileBtn.classList.add('active');
+                messageInput.placeholder = 'Add a message…';
+            } else {
+                fileBtn.classList.remove('active');
+                messageInput.placeholder = 'Message…';
+            }
+        });
+
+        // ── Resizer ───────────────────────────────────────────
+        const resizer = document.getElementById('resizer');
+        const sidebar = document.querySelector('.sidebar');
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', () => {
+            isResizing = true;
+            resizer.classList.add('dragging');
+            document.body.style.cursor = 'ns-resize';
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!isResizing) return;
+            const rect = sidebar.getBoundingClientRect();
+            const pct  = Math.min(90, Math.max(10, ((e.clientY - rect.top) / rect.height) * 100));
+            guildList.style.height = `${pct}%`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!isResizing) return;
+            isResizing = false;
+            resizer.classList.remove('dragging');
+            document.body.style.cursor = '';
+        });
+
+        // ── Auth ──────────────────────────────────────────────
+        const savedToken = localStorage.getItem('discord_user_token');
+        if (savedToken) tokenInput.value = savedToken;
+
+        async function connect(token) {
+            if (isConnecting || !token) return;
+            isConnecting = true;
+            userToken = token.replace(/^"(.*)"$/, '$1');
+            loginButton.textContent = 'Connecting…';
+            loginButton.disabled    = true;
+            try {
+                const res = await fetch(`${API_BASE}/users/@me`, {
+                    headers: { 'Authorization': userToken, 'x-proxy-password': CORS_KEY }
+                });
+                if (res.status === 401) throw new Error('Invalid token.');
+                if (!res.ok) throw new Error(`Server responded with ${res.status}.`);
+
+                localStorage.setItem('discord_user_token', userToken);
+                loginScreen.style.display = 'none';
+                appScreen.style.display   = 'flex';
+                loadGuilds();
+                loadDMs();
+                startAutoRefresh();
+            } catch (err) {
+                alert(`Connection failed: ${err.message}`);
+                loginButton.textContent = 'Connect';
+                loginButton.disabled    = false;
+                localStorage.removeItem('discord_user_token');
+                tokenInput.value = '';
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        if (savedToken) connect(savedToken);
+        loginButton.addEventListener('click', () => connect(tokenInput.value.trim()));
+        tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') connect(tokenInput.value.trim()); });
+
+        // ── API ───────────────────────────────────────────────
+        async function apiCall(endpoint, options = {}) {
+            const headers = {
+                'Authorization': userToken,
+                'Content-Type':  'application/json',
+                'x-proxy-password': CORS_KEY,
+                ...options.headers
+            };
+            const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+            if (!res.ok) throw new Error(`API ${res.status}`);
+            return res.status === 204 ? null : res.json();
+        }
+
+        // ── Guilds ────────────────────────────────────────────
+        async function loadGuilds() {
+            try {
+                const guilds = await apiCall('/users/@me/guilds');
+                guildList.innerHTML = '';
+                guildList.appendChild(sidebarLabel('Servers'));
+
+                const dmDiv = makeItem('guild-item active', 'Direct Messages', e => {
+                    setActiveGuild(e.currentTarget);
+                    currentView = 'dm';
+                    loadDMs();
+                });
+                guildList.appendChild(dmDiv);
+
+                guilds.forEach(guild => {
+                    if (isBlocked(settings.blockedServers, guild.id)) return;
+                    const div = makeItem('guild-item', guild.name, e => {
+                        setActiveGuild(e.currentTarget);
+                        currentView = 'guild';
+                        loadChannels(guild.id);
+                    });
+                    div.oncontextmenu = e => showContextMenu(e, 'server', guild.id, guild.name);
+                    guildList.appendChild(div);
+                    parseTwemoji(div);
+                });
+            } catch (err) {
+                console.error('Failed to load guilds:', err);
+            }
+        }
+
+        function setActiveGuild(el) {
+            document.querySelectorAll('.guild-item').forEach(e => e.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function setActiveChannel(el, name) {
+            document.querySelectorAll('.channel-item').forEach(e => e.classList.remove('active'));
+            el.classList.add('active');
+            chatTitle.textContent = name;
+        }
+
+        // ── DMs ───────────────────────────────────────────────
+        async function loadDMs() {
+            try {
+                channelList.innerHTML = '';
+                channelList.appendChild(sidebarLabel('Direct Messages'));
+                const dms = await apiCall('/users/@me/channels');
+                dms.sort((a, b) => {
+                    try {
+                        const idA = BigInt(a.last_message_id || 0);
+                        const idB = BigInt(b.last_message_id || 0);
+                        return idA < idB ? 1 : idA > idB ? -1 : 0;
+                    } catch (_) { return 0; }
+                });
+                dms.forEach(ch => {
+                    if (isBlocked(settings.blockedChannels, ch.id)) return;
+                    const name = ch.name
+                        || ch.recipients?.map(r => r.global_name || r.username).join(', ')
+                        || 'Unknown';
+                    const div = makeItem('channel-item', name, e => {
+                        setActiveChannel(e.currentTarget, name);
+                        loadMessages(ch.id);
+                    });
+                    div.oncontextmenu = e => showContextMenu(e, 'channel', ch.id, name);
+                    channelList.appendChild(div);
+                    parseTwemoji(div);
+                });
+            } catch (err) {
+                console.error('Failed to load DMs:', err);
+            }
+        }
+
+        // ── Channels ──────────────────────────────────────────
+        async function loadChannels(guildId) {
+            try {
+                channelList.innerHTML = '';
+                channelList.appendChild(sidebarLabel('Text Channels'));
+                const channels = await apiCall(`/guilds/${guildId}/channels`);
+                channels
+                    .filter(c => c.type === 0)
+                    .sort((a, b) => a.position - b.position)
+                    .forEach(ch => {
+                        if (isBlocked(settings.blockedChannels, ch.id)) return;
+                        const displayName = `# ${ch.name}`;
+                        const div = makeItem('channel-item', displayName, e => {
+                            setActiveChannel(e.currentTarget, displayName);
+                            loadMessages(ch.id);
+                        });
+                        div.oncontextmenu = e => showContextMenu(e, 'channel', ch.id, displayName);
+                        channelList.appendChild(div);
+                        parseTwemoji(div);
+                    });
+            } catch (err) {
+                console.error('Failed to load channels:', err);
+            }
+        }
+
+        // ── Messages ──────────────────────────────────────────
+        async function loadMessages(channelId, silent = false) {
+            currentChannelId      = channelId;
+            messageInput.disabled = false;
+            sendButton.disabled   = false;
+            fileBtn.style.pointerEvents = 'auto';
+            fileBtn.style.opacity       = '1';
+
+            const prevScrollTop    = messageList.scrollTop;
+            const prevScrollHeight = messageList.scrollHeight;
+            const atBottom = (prevScrollHeight - prevScrollTop) <= (messageList.clientHeight + 2);
+
+            if (!silent) {
+                clearBlobUrls();
+                messageList.innerHTML = '';
+                messageList.appendChild(placeholder('Loading messages…'));
+            }
+
+            try {
+                const messages = await apiCall(`/channels/${channelId}/messages?limit=50`);
+
+                // Discard stale response if channel changed mid-fetch
+                if (channelId !== currentChannelId) return;
+                if (silent && !messages.length) return;
+
+                clearBlobUrls();
+                messageList.innerHTML = '';
+
+                if (!messages.length) {
+                    messageList.appendChild(placeholder('No messages here yet.'));
+                    return;
+                }
+
+                messages.reverse().forEach(msg => {
+                    if (msg.author && isBlocked(settings.blockedUsers, msg.author.id)) return;
+                    const div = buildMessage(msg);
+                    messageList.appendChild(div);
+                    parseTwemoji(div);
+                    loadMediaInMessage(div);
+                });
+
+                if (!silent || atBottom) {
+                    messageList.scrollTop = messageList.scrollHeight;
+                } else {
+                    // Restore relative scroll position after re-render
+                    messageList.scrollTop = prevScrollTop + (messageList.scrollHeight - prevScrollHeight);
+                }
+            } catch (err) {
+                if (!silent) {
+                    clearBlobUrls();
+                    messageList.innerHTML = '';
+                    messageList.appendChild(placeholder(`Failed to load messages: ${err.message}`, true));
+                }
+            }
+        }
+
+        function buildMessage(msg) {
+            const div  = document.createElement('div');
+            div.className = 'message';
+
+            const date     = new Date(msg.timestamp);
+            const isToday  = date.toDateString() === new Date().toDateString();
+            const timeStr  = isToday
+                ? `Today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : date.toLocaleString([], { month: 'numeric', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+            const username = msg.author?.global_name || msg.author?.username || 'Unknown';
+
+            let attachHtml = '';
+            (msg.attachments || []).forEach((att, idx) => {
+                const id   = `att-${msg.id}-${idx}`;
+                const type = att.content_type || '';
+                const name = escapeHtml(att.filename || 'file');
+                // Use proxy_url for images (Discord's resized CDN), raw url for video/files
+                const proxyUrl = escapeHtml(type.startsWith('image/') ? (att.proxy_url || att.url) : att.url);
+                if (type.startsWith('image/')) {
+                    attachHtml += `<img id="${id}" class="attachment-preview" alt="${name}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-proxy-url="${proxyUrl}" data-filename="${name}">`;
+                } else if (type.startsWith('video/')) {
+                    attachHtml += `<video id="${id}" controls class="attachment-preview" data-proxy-url="${proxyUrl}" data-filename="${name}"></video>`;
+                } else {
+                    attachHtml += `<a id="${id}" class="attachment-link" data-proxy-url="${proxyUrl}" data-filename="${name}">📎 ${name}</a>`;
+                }
+            });
+
+            div.innerHTML = `
+                <div class="message-header">
+                    <span class="author">${escapeHtml(username)}</span>
+                    <span class="timestamp">${timeStr}</span>
+                </div>
+                <div class="content">${escapeHtml(msg.content)}</div>
+                ${attachHtml}
+            `;
+
+            const authorEl = div.querySelector('.author');
+            if (authorEl && msg.author) {
+                authorEl.oncontextmenu = e => showContextMenu(e, 'user', msg.author.id, username);
+            }
+
+            return div;
+        }
+
+        function loadMediaInMessage(div) {
+            div.querySelectorAll('[data-proxy-url]').forEach(el => {
+                const url      = el.dataset.proxyUrl;
+                const filename = el.dataset.filename || url.split('/').pop().split('?')[0];
+
+                if (el.tagName === 'IMG' || el.tagName === 'VIDEO') {
+                    // Set src directly first — no CORS needed, so it always displays.
+                    el.src = url;
+                    if (el.tagName === 'IMG') el.alt = filename;
+
+                    // Try to fetch a blob: upgrades src to an object URL (avoids
+                    // repeated CDN requests and works better behind filters) and
+                    // enables a proper client-side download button.
+                    proxyMedia(url).then(({ blobUrl }) => {
+                        activeBlobUrls.push(blobUrl);
+                        el.src = blobUrl; // upgrade display src to blob
+                        addDownloadLink(el, blobUrl, filename);
+                    }).catch(() => {
+                        // Blob unavailable — keep the direct src and show an open link.
+                        const link       = document.createElement('a');
+                        link.href        = url;
+                        link.target      = '_blank';
+                        link.className   = 'download-link';
+                        link.textContent = '⬇ Open';
+                        el.after(link);
+                    });
+                } else {
+                    // File attachment (<a>) — try blob download, fall back to direct link.
+                    proxyMedia(url).then(({ blobUrl }) => {
+                        activeBlobUrls.push(blobUrl);
+                        el.href     = blobUrl;
+                        el.download = filename;
+                        el.target   = '';
+                    }).catch(() => {
+                        el.href   = url;
+                        el.target = '_blank';
+                    });
+                }
+            });
+        }
+
+        // ── Send Message ──────────────────────────────────────
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        });
+
+        async function sendMessage() {
+            const content  = messageInput.value.trim();
+            const hasFiles = fileInput.files.length > 0;
+            if (!content && !hasFiles) return;
+            if (!currentChannelId) return;
+
+            messageInput.disabled = true;
+            sendButton.disabled   = true;
+            try {
+                let body, extraHeaders = {};
+                if (hasFiles) {
+                    const fd = new FormData();
+                    fd.append('file[0]', fileInput.files[0]);
+                    fd.append('payload_json', JSON.stringify({ content }));
+                    body = fd;
+                } else {
+                    body = JSON.stringify({ content });
+                    extraHeaders['Content-Type'] = 'application/json';
+                }
+
+                const res = await fetch(`${API_BASE}/channels/${currentChannelId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Authorization': userToken, 'x-proxy-password': CORS_KEY, ...extraHeaders },
+                    body
+                });
+
+                if (!res.ok) throw new Error(`Status ${res.status}`);
+
+                messageInput.value       = '';
+                fileInput.value          = '';
+                fileBtn.classList.remove('active');
+                messageInput.placeholder = 'Message…';
+                loadMessages(currentChannelId);
+            } catch (err) {
+                alert(`Failed to send: ${err.message}`);
+                messageInput.focus();
+            } finally {
+                messageInput.disabled = false;
+                sendButton.disabled   = false;
+            }
+        }
+
+        // ── Proxy / Media ─────────────────────────────────────
+        async function proxyMedia(url) {
+            // No custom headers — keeps it a simple request so no preflight fires.
+            // The proxy may redirect to the CDN; without x-proxy-password the CDN's
+            // CORS (Access-Control-Allow-Origin: *) lets the blob through.
+            const res = await fetch(`${PROXY_BASE}/${url}`);
+            if (!res.ok) throw new Error(res.status);
+            const blob    = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            return { blobUrl, blob };
+        }
+
+        function addDownloadLink(el, blobUrl, filename) {
+            const a       = document.createElement('a');
+            a.href        = blobUrl;
+            a.download    = filename;
+            a.className   = 'download-link';
+            a.textContent = '⬇ Download';
+            el.after(a);
+        }
+
+        function clearBlobUrls() {
+            activeBlobUrls.forEach(u => URL.revokeObjectURL(u));
+            activeBlobUrls = [];
+        }
+
+        // ── Helpers ───────────────────────────────────────────
+        function makeItem(className, text, onclick) {
+            const div = document.createElement('div');
+            div.className = className;
+            div.textContent = text;
+            div.addEventListener('click', onclick);
+            return div;
+        }
+
+        function sidebarLabel(text) {
+            const div = document.createElement('div');
+            div.className   = 'sidebar-label';
+            div.textContent = text;
+            return div;
+        }
+
+        function placeholder(text, isError = false) {
+            const div = document.createElement('div');
+            div.className   = `placeholder${isError ? ' error' : ''}`;
+            div.textContent = text;
+            return div;
+        }
+
+        function parseTwemoji(el) {
+            twemoji.parse(el, {
+                base:      'https://cdn.jsdelivr.net/npm/twemoji@14.0.2/assets/',
+                folder:    'svg',
+                ext:       '.svg',
+                className: 'twemoji'
+            });
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+            }[c]));
+        }
+    </script>
 </body>
+
 </html>
