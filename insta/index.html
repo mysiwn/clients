@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Instagram Client">
+    <meta name="theme-color" content="#000000">
+    <meta name="application-name" content="Instagram Client">
+    <title>Local Instagram Client</title>
+    <link rel="stylesheet" id="remote-css" href="https://raw.githubusercontent.com/mysiwn/school/main/insta/index.css"
+          onerror="this.onerror=null;this.href='index.css';">
+</head>
+
+<body>
+
+    <!-- ── Setup Screen ─────────────────────────────────── -->
+    <div id="setup-screen">
+        <div class="login-box">
+            <h2>Setup</h2>
+            <p>Configure your client before first use.</p>
+            <div class="setup-field">
+                <label>CORS Proxy URL</label>
+                <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
+            </div>
+            <div class="setup-field">
+                <label>Notifications</label>
+                <select id="setup-notify-mode">
+                    <option value="dm">DMs only</option>
+                    <option value="all">All activity</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <button id="setup-save-btn" style="width:100%">Save & Continue</button>
+        </div>
+    </div>
+
+    <!-- ── Login Screen ─────────────────────────────────── -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h2 class="ig-logo">Instagram</h2>
+            <p>Sign in to your account.</p>
+
+            <div class="login-tabs">
+                <button class="login-tab active" data-tab="session">Session ID</button>
+                <button class="login-tab" data-tab="credentials">Login</button>
+            </div>
+
+            <!-- Session ID Tab -->
+            <div class="login-panel active" id="tab-session">
+                <div>
+                    <input type="password" class="login-input" id="session-input" placeholder="Paste your sessionid cookie">
+                    <button id="login-button" style="width:100%">Connect</button>
+                </div>
+            </div>
+
+            <!-- Credentials Tab -->
+            <div class="login-panel" id="tab-credentials">
+                <div id="credential-fields">
+                    <input type="text" class="login-input" id="cred-username" placeholder="Username or email">
+                    <input type="password" class="login-input" id="cred-password" placeholder="Password">
+                    <button id="cred-login-button" style="width:100%">Log In</button>
+                </div>
+                <div id="mfa-section">
+                    <span class="login-label">Two-Factor Authentication</span>
+                    <input type="text" class="login-input" id="mfa-code" placeholder="6-digit code" autocomplete="one-time-code">
+                    <button id="mfa-submit-button" style="width:100%">Verify</button>
+                </div>
+                <div id="challenge-section">
+                    <span class="login-label">Security Challenge</span>
+                    <input type="text" class="login-input" id="challenge-code" placeholder="Security code from email/SMS">
+                    <button id="challenge-submit-button" style="width:100%">Submit</button>
+                </div>
+            </div>
+
+            <div class="notice">
+                Requests route through a CORS proxy.
+            </div>
+            <div id="login-error" style="color:#ed4245;font-size:0.85rem;display:none"></div>
+        </div>
+    </div>
+
+    <!-- ── Settings Modal ───────────────────────────────── -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>Settings</h3>
+            <div>
+                <label>Proxy URL</label>
+                <input type="text" id="setting-proxy-url">
+            </div>
+            <div>
+                <label>Notifications</label>
+                <select id="setting-notify-mode">
+                    <option value="dm">DMs only</option>
+                    <option value="all">All activity</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <hr class="modal-separator">
+            <div>
+                <label>Auto-Refresh Interval (seconds, 0 to disable)</label>
+                <input type="number" id="setting-refresh" min="30" value="0">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="settings-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── New DM Modal ─────────────────────────────────── -->
+    <div id="new-dm-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>New Message</h3>
+            <div>
+                <label>Search Users</label>
+                <input type="text" id="new-dm-search" placeholder="Search by username...">
+            </div>
+            <div id="new-dm-results" class="search-results"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="new-dm-cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Post Viewer Modal ────────────────────────────── -->
+    <div id="post-modal" class="modal-overlay">
+        <div class="modal post-viewer-modal">
+            <div id="post-viewer-content"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="post-modal-close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── App ──────────────────────────────────────────── -->
+    <div id="app">
+        <div class="sidebar">
+            <div class="sidebar-nav">
+                <button class="nav-tab active" data-view="feed">Feed</button>
+                <button class="nav-tab" data-view="inbox">Inbox</button>
+                <button class="nav-tab" data-view="explore">Explore</button>
+                <button class="nav-tab" data-view="profile">Profile</button>
+            </div>
+            <div class="sidebar-content" id="sidebar-content"></div>
+        </div>
+        <div class="main">
+            <div class="header" id="header">
+                <span id="header-title">Feed</span>
+                <div class="connection-status disconnected" id="connection-status">
+                    <span class="connection-status-tooltip" id="connection-status-tooltip">Polling</span>
+                </div>
+                <button class="settings-btn" id="settings-open-btn">Settings</button>
+            </div>
+            <div class="content-area" id="content-area"></div>
+            <div class="input-area" id="dm-input-area" style="display:none">
+                <input type="text" id="message-input" placeholder="Message..." disabled>
+                <button id="send-button" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function(){
+            var s=document.createElement('script');
+            s.src='https://raw.githubusercontent.com/mysiwn/school/main/insta/index.js';
+            s.onerror=function(){
+                var f=document.createElement('script');
+                f.src='index.js';
+                document.body.appendChild(f);
+            };
+            document.body.appendChild(s);
+        })();
+    </script>
+</body>
+
+</html>

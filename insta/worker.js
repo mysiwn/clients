@@ -5,16 +5,17 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 
 // ── Allowed domains (SSRF prevention) ─────────────────────
 var ALLOWED_HOSTS = /* @__PURE__ */ new Set([
-  "discord.com",
-  "cdn.discordapp.com",
-  "media.discordapp.net",
-  "images-ext-1.discordapp.net",
-  "images-ext-2.discordapp.net",
-  "gateway.discord.gg"
+  "i.instagram.com",
+  "www.instagram.com",
+  "instagram.com",
+  "graph.instagram.com",
+  "scontent.cdninstagram.com"
 ]);
 
 function isAllowedHost(hostname) {
   if (ALLOWED_HOSTS.has(hostname)) return true;
+  // Allow all cdninstagram.com subdomains (scontent-lax3-1.cdninstagram.com, etc.)
+  if (hostname.endsWith(".cdninstagram.com")) return true;
   // Allow subdomains of allowed hosts
   for (const h of ALLOWED_HOSTS) {
     if (hostname.endsWith("." + h)) return true;
@@ -26,8 +27,8 @@ __name(isAllowedHost, "isAllowedHost");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, mediaurl",
-  "Access-Control-Expose-Headers": "Content-Type, Content-Length, X-Cache",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl",
+  "Access-Control-Expose-Headers": "Content-Type, Content-Length, X-Cache, Set-Cookie",
   "Access-Control-Max-Age": "86400"
 };
 var BLOCKED_RESPONSE_HEADERS = /* @__PURE__ */ new Set([
@@ -83,7 +84,7 @@ var worker_default = {
     if (!out.has("User-Agent")) {
       out.set(
         "User-Agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+        "Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229258)"
       );
     }
     if (!out.has("Accept")) {
@@ -160,7 +161,7 @@ async function handleImageRequest(request, env) {
   try {
     upstream = await fetch(parsedUrl.toString(), {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+        "User-Agent": "Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229258)",
         "Accept": "image/*,*/*;q=0.8",
         "Referer": parsedUrl.origin + "/"
       },
