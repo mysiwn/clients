@@ -2,11 +2,32 @@ var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
 // src/worker.js
+
+// ── Allowed domains (SSRF prevention) ─────────────────────
+var ALLOWED_HOSTS = /* @__PURE__ */ new Set([
+  "discord.com",
+  "cdn.discordapp.com",
+  "media.discordapp.net",
+  "images-ext-1.discordapp.net",
+  "images-ext-2.discordapp.net",
+  "gateway.discord.gg"
+]);
+
+function isAllowedHost(hostname) {
+  if (ALLOWED_HOSTS.has(hostname)) return true;
+  // Allow subdomains of allowed hosts
+  for (const h of ALLOWED_HOSTS) {
+    if (hostname.endsWith("." + h)) return true;
+  }
+  return false;
+}
+__name(isAllowedHost, "isAllowedHost");
+
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, x-proxy-cookie, x-proxy-ua, mediaurl, X-CSRFToken, X-IG-App-ID, X-IG-Device-ID, X-Secsdk-Csrf-Token, X-Secsdk-Csrf-Version, X-Secsdk-Csrf-Request, Referer, Origin, User-Agent, X-Requested-With",
-  "Access-Control-Expose-Headers": "*",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, mediaurl",
+  "Access-Control-Expose-Headers": "Content-Type, Content-Length, X-Cache",
   "Access-Control-Max-Age": "86400"
 };
 var BLOCKED_RESPONSE_HEADERS = /* @__PURE__ */ new Set([
@@ -35,40 +56,36 @@ var worker_default = {
     let target = url.pathname.slice(1) + url.search;
     target = target.replace(/^(https?:\/)([^/])/, "$1/$2");
     if (!target || !/^https?:\/\//i.test(target)) {
-      return errJson(400, "Missing or invalid target URL. Usage: /<full-url>");
+      return errJson(400, "Missing or invalid target URL");
     }
     let targetUrl;
     try {
       targetUrl = new URL(target);
     } catch {
-      return errJson(400, "Malformed target URL: " + target);
+      return errJson(400, "Malformed target URL");
     }
+
+    // ── Domain allowlist check ────────────────────────────
+    if (!isAllowedHost(targetUrl.hostname)) {
+      return errJson(403, "Domain not allowed");
+    }
+
     const out = new Headers();
-    const proxyUa = request.headers.get("x-proxy-ua");
     for (const [key, value] of request.headers.entries()) {
       const lower = key.toLowerCase();
-      if (lower === "x-proxy-cookie")
-        continue;
-      if (lower === "x-proxy-ua")
-        continue;
-      if (lower === "host")
-        continue;
-      if (lower === "mediaurl")
-        continue;
-      if (lower.startsWith("cf-"))
+      if (lower === "host" || lower === "mediaurl" || lower.startsWith("cf-"))
         continue;
       out.set(key, value);
     }
-    const proxyCookie = request.headers.get("x-proxy-cookie");
-    if (proxyCookie)
-      out.set("Cookie", proxyCookie);
     out.set("Host", targetUrl.host);
     out.set("Origin", targetUrl.origin);
     out.set("Referer", targetUrl.origin + "/");
-    out.set(
-      "User-Agent",
-      proxyUa || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-    );
+    if (!out.has("User-Agent")) {
+      out.set(
+        "User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+      );
+    }
     if (!out.has("Accept")) {
       out.set("Accept", "*/*");
     }
@@ -85,7 +102,7 @@ var worker_default = {
     try {
       upstream = await fetch(targetUrl.toString(), init);
     } catch (err) {
-      return errJson(502, "Upstream fetch failed: " + err.message);
+      return errJson(502, "Upstream fetch failed");
     }
     const resHeaders = new Headers(CORS);
     for (const [key, value] of upstream.headers.entries()) {
@@ -112,7 +129,12 @@ async function handleImageRequest(request, env) {
   try {
     parsedUrl = new URL(mediaUrl);
   } catch {
-    return errJson(400, "Invalid mediaurl: " + mediaUrl);
+    return errJson(400, "Invalid media URL");
+  }
+
+  // ── Domain allowlist check ────────────────────────────
+  if (!isAllowedHost(parsedUrl.hostname)) {
+    return errJson(403, "Media domain not allowed");
   }
 
   const kv = env.IMAGE_CACHE;
@@ -145,11 +167,11 @@ async function handleImageRequest(request, env) {
       redirect: "follow"
     });
   } catch (err) {
-    return errJson(502, "Upstream fetch failed: " + err.message);
+    return errJson(502, "Upstream fetch failed");
   }
 
   if (!upstream.ok) {
-    return errJson(upstream.status, "Upstream returned " + upstream.status);
+    return errJson(upstream.status, "Upstream error");
   }
 
   const contentType = upstream.headers.get("content-type") || "application/octet-stream";
