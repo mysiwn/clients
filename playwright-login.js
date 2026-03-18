@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 
 // ── Credentials config ────────────────────────────────────
-// Edit config.json (created by install.sh) or set values here directly.
+// Edit config.json or set values here directly.
 // Leave blank to log in manually via the browser window.
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 let CFG = { discord: { email: '', password: '' }, instagram: { username: '', password: '' } };
