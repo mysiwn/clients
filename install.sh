@@ -149,10 +149,10 @@ echo "[*] Generating start.sh..."
 cat > "$SCRIPT_DIR/start.sh" << 'STARTEOF'
 #!/bin/bash
 # ══════════════════════════════════════════════════════════
-# start.sh — Start Playwright server + Cloudflare Tunnel
+# start.sh — Start Playwright server (Discord + Instagram)
+#            + Cloudflare Tunnel
 #
-# Usage: bash start.sh discord
-#        bash start.sh instagram
+# Usage: bash start.sh
 # ══════════════════════════════════════════════════════════
 
 set -e
@@ -160,13 +160,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-SERVICE="${1:-discord}"
 PORT="${PORT:-3000}"
-
-if [ "$SERVICE" != "discord" ] && [ "$SERVICE" != "instagram" ]; then
-    echo "Usage: bash start.sh discord|instagram"
-    exit 1
-fi
 
 cleanup() {
     echo ""
@@ -179,8 +173,8 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 echo ""
-echo "Starting Playwright server for $SERVICE on port $PORT..."
-node playwright-server.js --service "$SERVICE" &
+echo "Starting Playwright server (Discord + Instagram) on port $PORT..."
+node playwright-server.js &
 SERVER_PID=$!
 
 # Wait for server to be ready
@@ -206,7 +200,11 @@ echo "╔═══════════════════════�
 if [ -n "$TUNNEL_URL" ]; then
 echo "║  Tunnel URL: $TUNNEL_URL"
 echo "║                                                          ║"
-echo "║  Add this URL to PLAYWRIGHT_MIRRORS in your index.js     ║"
+echo "║  Discord   WS: $TUNNEL_URL/stream/discord               "
+echo "║  Instagram WS: $TUNNEL_URL/stream/instagram             "
+echo "║                                                          ║"
+echo "║  Add this base URL to PLAYWRIGHT_MIRRORS in             "
+echo "║  index.js (Discord) and insta/index.js (Instagram)      "
 else
 echo "║  Tunnel URL not detected yet — check the logs above      ║"
 fi
@@ -227,11 +225,11 @@ echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  Setup complete!                                         ║"
 echo "║                                                          ║"
-echo "║  Start the server:                                       ║"
-echo "║    bash start.sh discord                                 ║"
-echo "║    bash start.sh instagram                               ║"
+echo "║  Start both servers:                                     ║"
+echo "║    bash start.sh                                         ║"
 echo "║                                                          ║"
-echo "║  The script will print a trycloudflare.com URL.          ║"
-echo "║  Add it to PLAYWRIGHT_MIRRORS in index.js / insta/index.js║"
+echo "║  Both Discord and Instagram run simultaneously.          ║"
+echo "║  The script prints a trycloudflare.com URL.              ║"
+echo "║  Add it to PLAYWRIGHT_MIRRORS in index.js + insta/index.js║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
