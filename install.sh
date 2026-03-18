@@ -3,7 +3,7 @@
 # install.sh — One-click Playwright streaming server setup
 #
 # Run: bash install.sh
-# Then: bash start.sh discord   OR   bash start.sh instagram
+# Then: bash start.sh
 # ══════════════════════════════════════════════════════════
 
 set -e

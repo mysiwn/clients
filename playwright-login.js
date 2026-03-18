@@ -20,7 +20,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 
 // ── Credentials config ────────────────────────────────────
 // Edit config.json (created by install.sh) or set values here directly.
