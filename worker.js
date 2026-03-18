@@ -45,7 +45,7 @@ __name(isAllowedHost, "isAllowedHost");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl, X-Encrypted-Auth, X-Client-Id",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl, X-Encrypted-Auth, X-Client-Id, X-IG-Session, X-IG-Csrf",
   "Access-Control-Expose-Headers": "Content-Type, Content-Length, X-Cache, Set-Cookie, X-Encrypted-Body",
   "Access-Control-Max-Age": "86400"
 };
@@ -371,11 +371,14 @@ var worker_default = {
     }
 
     const out = new Headers();
+    let igSession = null, igCsrf = null;
     for (const [key, value] of request.headers.entries()) {
       const lower = key.toLowerCase();
       if (lower === "host" || lower === "mediaurl" || lower.startsWith("cf-")
           || lower === "x-encrypted-auth" || lower === "x-client-id")
         continue;
+      if (lower === "x-ig-session") { igSession = value; continue; }
+      if (lower === "x-ig-csrf")    { igCsrf = value;    continue; }
       out.set(key, value);
     }
     out.set("Host", targetUrl.host);
@@ -398,6 +401,10 @@ var worker_default = {
           out.set("X-CSRFToken", decryptedAuthPayload.csrfToken);
         }
       }
+    } else if (service === "instagram" && igSession) {
+      // Plain-header path: browsers can't set Cookie directly, so we accept
+      // X-IG-Session / X-IG-Csrf and reconstruct the Cookie here
+      out.set("Cookie", `sessionid=${igSession}; csrftoken=${igCsrf || ""}`);
     }
 
     if (!out.has("User-Agent")) {

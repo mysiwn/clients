@@ -169,7 +169,10 @@ const settingNotifyMode = document.getElementById('setting-notify-mode');
 // ── Common Headers ────────────────────────────────────────
 function igHeaders() {
     return {
-        'Cookie': `sessionid=${sessionId}; csrftoken=${csrfToken}`,
+        // Browsers forbid setting the Cookie header directly in fetch(), so we
+        // send the session via custom headers that the proxy maps to Cookie.
+        'X-IG-Session': sessionId,
+        'X-IG-Csrf': csrfToken,
         'X-CSRFToken': csrfToken,
         'X-IG-App-ID': IG_APP_ID,
         'User-Agent': 'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229258)',
