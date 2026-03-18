@@ -112,17 +112,47 @@ install_cloudflared() {
 
 install_cloudflared
 
-# ── 5. Generate start.sh ──────────────────────────────────
+# ── 5. Save credentials to config.json ───────────────────
+echo ""
+echo "[*] Login credentials setup (optional — press Enter to skip)..."
+echo "    Credentials are saved to config.json (gitignored) for auto-login."
+echo ""
+
+read -p "    Discord email    : " DISCORD_EMAIL
+read -s -p "    Discord password : " DISCORD_PASS
+echo ""
+read -p "    Instagram username : " INSTA_USER
+read -s -p "    Instagram password : " INSTA_PASS
+echo ""
+
+# Write config.json with whatever was provided (blanks = manual login)
+cat > "$SCRIPT_DIR/config.json" << CONFIGEOF
+{
+  "_comment": "Fill in credentials for auto-login. Leave blank to log in manually.",
+  "discord": {
+    "email": $(printf '%s' "$DISCORD_EMAIL" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),
+    "password": $(printf '%s' "$DISCORD_PASS" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+  },
+  "instagram": {
+    "username": $(printf '%s' "$INSTA_USER" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),
+    "password": $(printf '%s' "$INSTA_PASS" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+  }
+}
+CONFIGEOF
+
+echo "[OK] config.json saved"
+
+# ── 6. Generate start.sh ──────────────────────────────────
 echo ""
 echo "[*] Generating start.sh..."
 
 cat > "$SCRIPT_DIR/start.sh" << 'STARTEOF'
 #!/bin/bash
 # ══════════════════════════════════════════════════════════
-# start.sh — Start Playwright server + Cloudflare Tunnel
+# start.sh — Start Playwright server (Discord + Instagram)
+#            + Cloudflare Tunnel
 #
-# Usage: bash start.sh discord
-#        bash start.sh instagram
+# Usage: bash start.sh
 # ══════════════════════════════════════════════════════════
 
 set -e
@@ -130,13 +160,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-SERVICE="${1:-discord}"
 PORT="${PORT:-3000}"
-
-if [ "$SERVICE" != "discord" ] && [ "$SERVICE" != "instagram" ]; then
-    echo "Usage: bash start.sh discord|instagram"
-    exit 1
-fi
 
 cleanup() {
     echo ""
@@ -149,8 +173,8 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 echo ""
-echo "Starting Playwright server for $SERVICE on port $PORT..."
-node playwright-server.js --service "$SERVICE" &
+echo "Starting Playwright server (Discord + Instagram) on port $PORT..."
+node playwright-server.js &
 SERVER_PID=$!
 
 # Wait for server to be ready
@@ -176,7 +200,11 @@ echo "╔═══════════════════════�
 if [ -n "$TUNNEL_URL" ]; then
 echo "║  Tunnel URL: $TUNNEL_URL"
 echo "║                                                          ║"
-echo "║  Add this URL to PLAYWRIGHT_MIRRORS in your index.js     ║"
+echo "║  Discord   WS: $TUNNEL_URL/stream/discord               "
+echo "║  Instagram WS: $TUNNEL_URL/stream/instagram             "
+echo "║                                                          ║"
+echo "║  Add this base URL to PLAYWRIGHT_MIRRORS in             "
+echo "║  index.js (Discord) and insta/index.js (Instagram)      "
 else
 echo "║  Tunnel URL not detected yet — check the logs above      ║"
 fi
@@ -197,11 +225,11 @@ echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  Setup complete!                                         ║"
 echo "║                                                          ║"
-echo "║  Start the server:                                       ║"
-echo "║    bash start.sh discord                                 ║"
-echo "║    bash start.sh instagram                               ║"
+echo "║  Start both servers:                                     ║"
+echo "║    bash start.sh                                         ║"
 echo "║                                                          ║"
-echo "║  The script will print a trycloudflare.com URL.          ║"
-echo "║  Add it to PLAYWRIGHT_MIRRORS in index.js / insta/index.js║"
+echo "║  Both Discord and Instagram run simultaneously.          ║"
+echo "║  The script prints a trycloudflare.com URL.              ║"
+echo "║  Add it to PLAYWRIGHT_MIRRORS in index.js + insta/index.js║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
