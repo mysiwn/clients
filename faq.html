@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ &amp; Security — Local Clients</title>
+    <link rel="stylesheet" href="faq.css">
+</head>
+
+<body>
+
+    <!-- ── Header ─────────────────────────────────────── -->
+    <div class="faq-header">
+        <h1>FAQ &amp; Security</h1>
+        <p>Everything you need to know about using the local Discord &amp; Instagram clients.</p>
+        <div class="badge-row">
+            <span class="badge open-source">&#128194; Open Source</span>
+            <span class="badge secure">&#128274; End-to-End Encrypted</span>
+            <span class="badge free">&#9889; 100% Free</span>
+        </div>
+    </div>
+
+    <!-- ── Navigation ─────────────────────────────────── -->
+    <div class="nav-tabs">
+        <button class="nav-tab active" data-section="faq">Student FAQ</button>
+        <button class="nav-tab" data-section="features">All Features</button>
+        <button class="nav-tab" data-section="security">Security</button>
+    </div>
+
+    <div class="faq-container">
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- SECTION: Student FAQ                            -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="sec-faq" class="faq-section active">
+            <h2 class="section-title">Frequently Asked Questions</h2>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#667eea22;color:#667eea">&#128274;</span>
+                    Is this safe to use?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p><strong>Yes.</strong> This project is fully open source — anyone can read every line of code on <a href="https://github.com/mysiwn/school" style="color:#667eea">GitHub</a>. Your data is never sent to any third-party server. The clients only communicate with the official Discord and Instagram APIs through an encrypted CORS proxy that we control. No analytics, no tracking, no ads.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#2ed57322;color:#2ed573">&#128273;</span>
+                    Is my password saved anywhere?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p>Your password is <strong>never</strong> stored in plain text. When you log in, your session token (not your password) is encrypted with AES-256-GCM using a PIN that only you know, and stored in your browser's local storage. The encrypted data is completely useless without your PIN. Your password is only ever sent directly to the official Discord/Instagram login servers — we never see it.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#ff634722;color:#ff6347">&#127979;</span>
+                    Can my school see my password or messages?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p><strong>No.</strong> Even though school networks may install root certificates to inspect HTTPS traffic, we encrypt all sensitive data <em>inside your browser</em> before it ever hits the network. Your tokens and auth headers are wrapped in AES-256-GCM encryption using a key exchange (ECDH) between your browser and the proxy. To the school's network, it all looks like random encrypted data. They cannot read your password, your token, or your messages.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#ffa50022;color:#ffa500">&#128229;</span>
+                    Is my data stored on a server?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p>The only thing stored server-side is an <strong>encrypted image cache</strong> that automatically expires after 2 days. This makes images load faster and reduces API calls. No passwords, no tokens, no messages, and no personal data are ever stored on our servers. Your credentials only exist in your browser's encrypted vault.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#ff69b422;color:#ff69b4">&#128148;</span>
+                    Can I get banned for using this?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p>Using unofficial clients does carry some risk — both Discord and Instagram's Terms of Service technically prohibit third-party clients. However, we take several precautions: realistic user agents, rate limiting to avoid spam detection, and standard API usage patterns. Many people use similar tools without issues, but we can't guarantee zero risk. <strong>Use at your own discretion.</strong></p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#00bfff22;color:#00bfff">&#128683;</span>
+                    What happens when I close the tab?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p>Your session ends and the encryption vault <strong>locks automatically</strong>. The master encryption key is only held in memory — it's gone the moment you close the tab. When you come back, you'll need to re-enter your PIN to unlock the vault and resume your session. No one can access your stored credentials without your PIN.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#ffd43b22;color:#ffd43b">&#128187;</span>
+                    Do I need to install anything?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p><strong>Nope!</strong> Everything runs directly in your web browser. Just open the HTML file and you're good to go. No apps to install, no extensions, no sign-ups. For the optional Playwright-based login (which opens a real browser for login), you'd need Node.js installed — but that's completely optional.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#9b59b622;color:#9b59b6">&#128064;</span>
+                    Is this open source? Can I see the code?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p><strong>Yes!</strong> The entire project is open source and available on <a href="https://github.com/mysiwn/school" style="color:#667eea">GitHub</a>. Every line of client code, worker code, and this FAQ page is publicly viewable. You (or anyone you trust) can audit the code to verify there are no backdoors, no hidden data collection, and no malicious behavior. Transparency is a core principle of this project.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#1abc9c22;color:#1abc9c">&#128246;</span>
+                    Does this work on school WiFi?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p><strong>Yes — that's exactly what it's designed for.</strong> School networks often block Discord and Instagram, and may even inspect your HTTPS traffic using installed certificates. These clients route through a Cloudflare Workers proxy that bypasses network blocks, and all sensitive data is encrypted client-side so even MITM inspection sees nothing useful.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#e74c3c22;color:#e74c3c">&#128680;</span>
+                    What if someone steals my computer?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p>Your credentials are protected by two layers: (1) the encrypted vault requires your PIN to unlock, and (2) the master key is never stored on disk — it only lives in memory while the tab is open. If someone gets your computer while the tab is closed, they'll find only encrypted data that's useless without your PIN. For extra safety, use a strong PIN (6+ digits).</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question">
+                    <span class="icon" style="background:#3498db22;color:#3498db">&#128101;</span>
+                    Who made this?
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="faq-answer">
+                    <p>This is a student-made, community-driven open source project. It was built to help students access their social platforms on restricted school networks while maintaining privacy and security. Contributions and feedback are welcome on <a href="https://github.com/mysiwn/school" style="color:#667eea">GitHub</a>.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- SECTION: All Features                           -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="sec-features" class="faq-section">
+            <h2 class="section-title">All Features</h2>
+
+            <!-- Discord -->
+            <div class="feature-group">
+                <h3>&#128172; Discord Client</h3>
+                <div class="feature-list">
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128273;</span>
+                        <div class="feat-text">
+                            <strong>Multiple Login Methods</strong>
+                            Token, email/password, or QR code scan
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#9889;</span>
+                        <div class="feat-text">
+                            <strong>Real-Time Messaging</strong>
+                            Live WebSocket gateway connection for instant messages
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#127968;</span>
+                        <div class="feat-text">
+                            <strong>Server &amp; Channel Browsing</strong>
+                            Full guild list with nested channel navigation
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128172;</span>
+                        <div class="feat-text">
+                            <strong>Direct Messages</strong>
+                            Private conversations and group DMs
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128206;</span>
+                        <div class="feat-text">
+                            <strong>File &amp; Image Uploads</strong>
+                            Share files and images with previews
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128274;</span>
+                        <div class="feat-text">
+                            <strong>E2E Encrypted Messages</strong>
+                            Passphrase-based end-to-end encryption for messages
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128522;</span>
+                        <div class="feat-text">
+                            <strong>Emoji Rendering</strong>
+                            Full Twemoji support for consistent emoji display
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128276;</span>
+                        <div class="feat-text">
+                            <strong>Notifications</strong>
+                            DMs, mentions, or all messages — your choice
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128260;</span>
+                        <div class="feat-text">
+                            <strong>Auto-Refresh</strong>
+                            Configurable polling interval for updates
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128683;</span>
+                        <div class="feat-text">
+                            <strong>User Blocking</strong>
+                            Block users, servers, and channels locally
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#9999;</span>
+                        <div class="feat-text">
+                            <strong>Message Editing &amp; Deletion</strong>
+                            Edit or delete your own messages
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#9000;</span>
+                        <div class="feat-text">
+                            <strong>Typing Indicators</strong>
+                            See when others are typing in real-time
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128196;</span>
+                        <div class="feat-text">
+                            <strong>Rich Embeds</strong>
+                            Renders link previews, images, and embedded content
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128272;</span>
+                        <div class="feat-text">
+                            <strong>2FA Support</strong>
+                            TOTP codes and backup codes for two-factor auth
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instagram -->
+            <div class="feature-group">
+                <h3>&#128247; Instagram Client</h3>
+                <div class="feature-list">
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128273;</span>
+                        <div class="feat-text">
+                            <strong>Flexible Login</strong>
+                            Session ID cookie or username/password authentication
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#127968;</span>
+                        <div class="feat-text">
+                            <strong>Feed Browsing</strong>
+                            Home feed and explore page with full post viewing
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128172;</span>
+                        <div class="feat-text">
+                            <strong>Direct Messages</strong>
+                            Full inbox, send and receive DMs
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128100;</span>
+                        <div class="feat-text">
+                            <strong>Profile Viewing</strong>
+                            View any user's profile, posts, and bio
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#10084;</span>
+                        <div class="feat-text">
+                            <strong>Post Likes</strong>
+                            Like and unlike posts in your feed
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#127902;</span>
+                        <div class="feat-text">
+                            <strong>Story Viewing</strong>
+                            Watch stories from users you follow
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128269;</span>
+                        <div class="feat-text">
+                            <strong>User Search</strong>
+                            Find and browse any Instagram user
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128272;</span>
+                        <div class="feat-text">
+                            <strong>2FA &amp; Challenge Support</strong>
+                            Handles security codes, email/SMS verification
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128260;</span>
+                        <div class="feat-text">
+                            <strong>Auto-Refresh</strong>
+                            Automatic polling for new content
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128276;</span>
+                        <div class="feat-text">
+                            <strong>Notifications</strong>
+                            Alerts for DMs and activity
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shared -->
+            <div class="feature-group">
+                <h3>&#128737; Shared Features (Both Clients)</h3>
+                <div class="feature-list">
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128274;</span>
+                        <div class="feat-text">
+                            <strong>Encrypted CORS Proxy</strong>
+                            ECDH + AES-256-GCM encrypted communication
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#127979;</span>
+                        <div class="feat-text">
+                            <strong>School Network Compatible</strong>
+                            Works on restricted WiFi with MITM protection
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#127760;</span>
+                        <div class="feat-text">
+                            <strong>No Installation Required</strong>
+                            Runs entirely in your web browser
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128194;</span>
+                        <div class="feat-text">
+                            <strong>Open Source</strong>
+                            Full code on <a href="https://github.com/mysiwn/school" style="color:#667eea">GitHub</a>
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128272;</span>
+                        <div class="feat-text">
+                            <strong>PIN-Protected Vault</strong>
+                            AES-256 encrypted credential storage
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128678;</span>
+                        <div class="feat-text">
+                            <strong>Rate Limiting</strong>
+                            Built-in protection against API abuse
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128241;</span>
+                        <div class="feat-text">
+                            <strong>PWA Support</strong>
+                            Install as app on mobile and desktop
+                        </div>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feat-icon">&#128640;</span>
+                        <div class="feat-text">
+                            <strong>Playwright Login</strong>
+                            Optional real-browser login for captchas &amp; QR codes
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- SECTION: Security                               -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="sec-security" class="faq-section">
+            <h2 class="section-title">Security Deep Dive</h2>
+            <p style="color:#8888aa;margin:-16px 0 24px;font-size:0.9rem;">
+                Every security feature explained — what it does and how it protects you.
+            </p>
+
+            <div class="security-grid">
+
+                <div class="security-card">
+                    <h4>&#128272; ECDH Key Exchange</h4>
+                    <p class="what">Creates a unique shared encryption key between your browser and the CORS proxy using Elliptic Curve Diffie-Hellman (P-256). Each user gets their own key pair.</p>
+                    <p class="how">Even if someone intercepts your network traffic, they can't derive the shared secret. Your data remains encrypted end-to-end between your browser and the proxy.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128274; AES-256-GCM Encryption</h4>
+                    <p class="what">All authentication headers (tokens, cookies, CSRF tokens) and API response bodies are encrypted using AES-256-GCM — the same standard used by governments and banks.</p>
+                    <p class="how">Your tokens and passwords appear as random encrypted blobs in transit. Network inspectors (including school MITM proxies) see only meaningless ciphertext.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128273; Encrypted Vault (PIN Protection)</h4>
+                    <p class="what">Your credentials are stored in an AES-256-GCM encrypted vault. The encryption key is derived from your PIN using PBKDF2 with 600,000 iterations and a random salt.</p>
+                    <p class="how">Even if someone accesses your browser's storage, they find only encrypted data. Without your PIN, brute-forcing the 600K-iteration key derivation is computationally infeasible.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128737; SSRF Prevention</h4>
+                    <p class="what">The proxy server maintains a strict allowlist of domains. Only official Discord and Instagram domains are permitted — all other requests are rejected.</p>
+                    <p class="how">Prevents attackers from abusing the proxy to access internal networks or unauthorized services. The proxy can only talk to the services it's designed for.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128678; Rate Limiting</h4>
+                    <p class="what">The proxy enforces per-IP request limits: 120 requests/minute for API calls, 30/minute for image loading, and 5/minute for key registration.</p>
+                    <p class="how">Prevents abuse of the proxy and protects your account from being flagged by Discord/Instagram for suspicious activity. Also stops denial-of-service attempts.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#9202; Anti-Replay Protection</h4>
+                    <p class="what">Every encrypted request includes a timestamp. The proxy rejects any request where the timestamp is more than 60 seconds old.</p>
+                    <p class="how">If someone captures your encrypted network traffic, they can't replay it later — the timestamp will be expired. This prevents session hijacking attacks.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128737; Response Integrity Verification</h4>
+                    <p class="what">AES-GCM includes an authentication tag that verifies the response hasn't been modified in transit.</p>
+                    <p class="how">If anyone (including a MITM proxy) tries to alter API responses — like injecting fake messages or modifying data — the authentication tag check fails and the client discards the tampered response.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128451; Zero Server Storage</h4>
+                    <p class="what">No passwords, tokens, or personal data are stored on the proxy server. The only server-side storage is an encrypted image cache with automatic 2-day expiry.</p>
+                    <p class="how">Even if the proxy server were compromised, there are no credentials to steal. Your secrets only exist in your browser's encrypted vault.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128194; Open Source Code</h4>
+                    <p class="what">The entire project — client code, worker/proxy code, and documentation — is publicly available on <a href="https://github.com/mysiwn/school" style="color:#667eea">GitHub</a>.</p>
+                    <p class="how">Anyone can audit the code to verify there are no backdoors, hidden data collection, or malicious behavior. Security through transparency, not obscurity.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128737; Content Security Policy</h4>
+                    <p class="what">CSP headers restrict which scripts, styles, and connections the page is allowed to make. Only trusted sources are permitted.</p>
+                    <p class="how">Prevents cross-site scripting (XSS) attacks where malicious scripts could try to steal your credentials or inject harmful content.</p>
+                </div>
+
+                <div class="security-card">
+                    <h4>&#128274; E2E Message Encryption</h4>
+                    <p class="what">Optional end-to-end encryption for Discord messages using a shared passphrase. Messages are encrypted with AES-256-GCM before being sent through the API.</p>
+                    <p class="how">Even Discord's servers can't read E2E-encrypted messages. Only people who know the passphrase can decrypt them. Messages appear as lock emoji + encrypted text to everyone else.</p>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── Back links ─────────────────────────────────── -->
+        <div class="back-links">
+            <a class="back-link" href="index.html">&#128172; Discord Client</a>
+            <a class="back-link" href="insta/index.html">&#128247; Instagram Client</a>
+            <a class="back-link" href="https://github.com/mysiwn/school">&#128194; GitHub</a>
+        </div>
+    </div>
+
+    <!-- ── Footer ─────────────────────────────────────── -->
+    <div class="faq-footer">
+        Open source project &middot; <a href="https://github.com/mysiwn/school">github.com/mysiwn/school</a>
+        &middot; Made by students, for students
+    </div>
+
+    <script>
+        /* ── Tab switching ──────────────────────────── */
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.faq-section').forEach(s => s.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById('sec-' + tab.dataset.section).classList.add('active');
+            });
+        });
+
+        /* ── FAQ accordion ──────────────────────────── */
+        document.querySelectorAll('.faq-question').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const item = btn.parentElement;
+                const wasOpen = item.classList.contains('open');
+                // Close all others
+                document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+                // Toggle this one
+                if (!wasOpen) item.classList.add('open');
+            });
+        });
+    </script>
+
+</body>
+</html>
