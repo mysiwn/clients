@@ -37,7 +37,7 @@ function isAllowedHost(hostname) {
 
 // ── CORS helpers ──────────────────────────────────────────
 const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
-const CORS_ALLOW_HEADERS = "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl, X-Encrypted-Auth, X-Client-Id, X-IG-Session, X-IG-Csrf";
+const CORS_ALLOW_HEADERS = "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl, X-Encrypted-Auth, X-Client-Id, X-IG-Session, X-IG-Csrf, X-IG-Full-Cookie";
 const CORS_EXPOSE_HEADERS = "Content-Type, Content-Length, X-Cache, Set-Cookie, X-Encrypted-Body";
 const CORS_MAX_AGE = "86400";
 
@@ -745,7 +745,7 @@ export default {
     }
 
     // ── /mirrors endpoints ────────────────────────────────
-    if (url.pathname === "/mirrors") {
+    if (url.pathname === "/mirrors" || url.pathname === "/mirrors/") {
       if (request.method === "GET") {
         return handleGetMirrors(env, origin, requestId);
       }
@@ -877,14 +877,15 @@ export default {
     }
 
     const out = new Headers();
-    let igSession = null, igCsrf = null;
+    let igSession = null, igCsrf = null, igFullCookie = null;
     for (const [key, value] of request.headers.entries()) {
       const lower = key.toLowerCase();
       if (lower === "host" || lower === "mediaurl" || lower.startsWith("cf-")
           || lower === "x-encrypted-auth" || lower === "x-client-id")
         continue;
-      if (lower === "x-ig-session") { igSession = value; continue; }
-      if (lower === "x-ig-csrf")    { igCsrf = value;    continue; }
+      if (lower === "x-ig-session")     { igSession = value; continue; }
+      if (lower === "x-ig-csrf")        { igCsrf = value;    continue; }
+      if (lower === "x-ig-full-cookie") { igFullCookie = value; continue; }
       out.set(key, value);
     }
     out.set("Host", targetUrl.host);
@@ -905,8 +906,13 @@ export default {
           out.set("X-CSRFToken", decryptedAuthPayload.csrfToken);
         }
       }
-    } else if (service === "instagram" && igSession) {
-      out.set("Cookie", `sessionid=${igSession}; csrftoken=${igCsrf || ""}`);
+    } else if (service === "instagram") {
+      // Prefer full cookies from Playwright session (includes all auth cookies)
+      if (igFullCookie) {
+        out.set("Cookie", igFullCookie);
+      } else if (igSession) {
+        out.set("Cookie", `sessionid=${igSession}; csrftoken=${igCsrf || ""}`);
+      }
     }
 
     if (!out.has("User-Agent")) {

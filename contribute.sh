@@ -18,6 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 PROXY_BASE="https://cors-proxy.mysiwn.workers.dev"
+ROOT_SERVER="${ROOT_SERVER:-}"  # Optional: http://your-pi:8090
 PORT="${PORT:-3000}"
 HEARTBEAT_INTERVAL=1500  # 25 minutes in seconds
 
@@ -196,10 +197,22 @@ REGISTER_RESP=$(curl -s -X POST "$PROXY_BASE/mirrors/contribute" \
     -d "{\"url\": \"$TUNNEL_URL\"}" 2>&1)
 
 if echo "$REGISTER_RESP" | grep -q '"ok":true'; then
-    echo "[OK] Registered successfully!"
+    echo "[OK] Registered with proxy successfully!"
 else
-    echo "[!] Registration failed: $REGISTER_RESP"
+    echo "[!] Proxy registration failed: $REGISTER_RESP"
     echo "    Your mirror is still running — users can connect directly with the URL above."
+fi
+
+# Also register with root server if configured
+if [ -n "$ROOT_SERVER" ]; then
+    ROOT_RESP=$(curl -s -X POST "$ROOT_SERVER/mirrors/contribute" \
+        -H "Content-Type: application/json" \
+        -d "{\"url\": \"$TUNNEL_URL\"}" 2>&1)
+    if echo "$ROOT_RESP" | grep -q '"ok":true'; then
+        echo "[OK] Registered with root server ($ROOT_SERVER) successfully!"
+    else
+        echo "[!] Root server registration failed: $ROOT_RESP"
+    fi
 fi
 
 # ── 10. Print success banner ─────────────────────────────
@@ -228,6 +241,12 @@ heartbeat() {
             echo "[heartbeat] Re-registered at $(date '+%H:%M:%S')"
         else
             echo "[heartbeat] Re-registration failed: $RESP"
+        fi
+        # Also heartbeat to root server
+        if [ -n "$ROOT_SERVER" ]; then
+            curl -s -X POST "$ROOT_SERVER/mirrors/contribute" \
+                -H "Content-Type: application/json" \
+                -d "{\"url\": \"$TUNNEL_URL\"}" >/dev/null 2>&1
         fi
     done
 }
