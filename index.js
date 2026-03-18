@@ -143,10 +143,7 @@ let currentView      = 'dm';
 let activeBlobUrls   = [];
 let lastReadMessageIds = {};
 let currentGuildChannels = {};
-let mfaTicket        = '';
-let mfaIsBackup      = false;
-let qrWebSocket      = null;
-let qrKeyPair        = null;
+let playwrightUrl    = localStorage.getItem('discord_playwright_url') || '';
 
 // Gateway state
 let gateway            = null;
@@ -194,8 +191,6 @@ loadE2EKeys();
 const setupScreen    = document.getElementById('setup-screen');
 const loginScreen    = document.getElementById('login-screen');
 const appScreen      = document.getElementById('app');
-const tokenInput     = document.getElementById('token-input');
-const loginButton    = document.getElementById('login-button');
 const guildList      = document.getElementById('guild-list');
 const channelList    = document.getElementById('channel-list');
 const messageList    = document.getElementById('message-list');
@@ -265,108 +260,77 @@ document.getElementById('setup-save-btn').addEventListener('click', () => {
 
 // ── Init Flow ─────────────────────────────────────────────
 function init() {
-    // Check for token injected via URL hash by playwright-login.js
-    // Hash fragment is never sent to any server — stays client-side only
-    const hashToken = getHashParam('pl_token');
-    if (hashToken) {
-        // Clear hash immediately so token isn't visible in address bar
-        history.replaceState(null, '', location.pathname + location.search);
-        // Ensure config exists before connecting
-        if (!clientConfig) {
-            saveClientConfig({ ...DEFAULT_CONFIG });
-        }
-        showLoginScreen();
-        connect(hashToken);
-        return;
-    }
-    if (!clientConfig) { setupScreen.style.display = 'flex'; }
-    else { showLoginScreen(); }
-}
-
-function getHashParam(key) {
-    const hash = location.hash.slice(1); // remove leading #
-    const params = new URLSearchParams(hash);
-    return params.get(key) || null;
+    if (!clientConfig) { setupScreen.style.display = 'flex'; return; }
+    const savedToken = localStorage.getItem('discord_user_token');
+    if (savedToken) { connect(savedToken); return; }
+    showLoginScreen();
 }
 
 function showLoginScreen() {
-    const savedToken = sessionStorage.getItem('discord_user_token');
-    if (savedToken) {
-        tokenInput.value = savedToken;
-        loginScreen.style.display = 'flex';
-        connect(savedToken);
-    } else {
-        loginScreen.style.display = 'flex';
-    }
+    document.getElementById('playwright-url-input').value = playwrightUrl;
+    loginScreen.style.display = 'flex';
 }
 
-// ── Login Tabs ────────────────────────────────────────────
-document.querySelectorAll('.login-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.login-panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-        showLoginError('');
-        resetMfaState();
-        cleanupQrLogin();
-        if (tab.dataset.tab === 'qr') startQrLogin();
-        if (tab.dataset.tab === 'browser') initBrowserStream();
-    });
-});
+function showLoginError(msg) {
+    loginError.textContent = msg;
+    loginError.style.display = msg ? 'block' : 'none';
+}
 
 // ── Browser Stream Login ─────────────────────────────────
-// Mirrors list — replace with your Cloudflare Tunnel URLs
-const PLAYWRIGHT_MIRRORS = [
-    // 'https://your-tunnel-id.trycloudflare.com',
-];
-
 let browserWs = null;
 let browserStreamActive = false;
 
-async function findActiveMirror() {
-    for (const url of PLAYWRIGHT_MIRRORS) {
-        try {
-            const res = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.ok && data.discord) return url;
-            }
-        } catch (_) {}
-    }
-    return null;
-}
+const GITHUB_MIRRORS_URL = 'https://raw.githubusercontent.com/mysiwn/school/main/playwright.json';
 
-function initBrowserStream() {
+async function fetchGithubMirrors() {
     const status = document.getElementById('browser-status');
-    const btn = document.getElementById('browser-connect-btn');
-    if (browserStreamActive) return;
-    status.textContent = 'Add tunnel URLs to PLAYWRIGHT_MIRRORS in index.js';
+    status.textContent = 'Fetching mirrors from GitHub...';
     status.className = 'browser-login-status';
-    btn.style.display = '';
-    btn.onclick = startBrowserLogin;
+    try {
+        const res = await fetch(GITHUB_MIRRORS_URL, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const mirrors = data.mirrors || [];
+        if (!mirrors.length) { status.textContent = 'No mirrors listed on GitHub.'; status.className = 'browser-login-status error'; return; }
+        // Test each mirror
+        status.textContent = `Testing ${mirrors.length} mirror(s)...`;
+        const available = [];
+        await Promise.all(mirrors.map(async url => {
+            try {
+                const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
+                if (r.ok) { const d = await r.json(); if (d.ok && d.discord) available.push(url); }
+            } catch (_) {}
+        }));
+        if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }
+        // Populate dropdown
+        const sel = document.getElementById('playwright-url-input');
+        sel.value = available[0];
+        playwrightUrl = available[0];
+        localStorage.setItem('discord_playwright_url', playwrightUrl);
+        status.textContent = `Found ${available.length} mirror(s). Ready to connect.`;
+        status.className = 'browser-login-status success';
+    } catch (err) {
+        status.textContent = 'Failed to fetch mirrors: ' + err.message;
+        status.className = 'browser-login-status error';
+    }
 }
 
 async function startBrowserLogin() {
-    const status = document.getElementById('browser-status');
-    const canvas = document.getElementById('browser-canvas');
-    const btn = document.getElementById('browser-connect-btn');
-    const ctx = canvas.getContext('2d');
+    const urlInput = document.getElementById('playwright-url-input');
+    const status   = document.getElementById('browser-status');
+    const canvas   = document.getElementById('browser-canvas');
+    const btn      = document.getElementById('browser-connect-btn');
+    const ctx      = canvas.getContext('2d');
+
+    const mirror = urlInput.value.trim().replace(/\/+$/, '');
+    if (!mirror) { status.textContent = 'Enter a Playwright server URL first.'; status.className = 'browser-login-status error'; return; }
+
+    playwrightUrl = mirror;
+    localStorage.setItem('discord_playwright_url', playwrightUrl);
 
     btn.disabled = true;
-    status.textContent = 'Checking mirrors...';
-    status.className = 'browser-login-status';
-
-    const mirror = await findActiveMirror();
-    if (!mirror) {
-        status.textContent = 'No mirrors available. Add tunnel URLs to PLAYWRIGHT_MIRRORS.';
-        status.className = 'browser-login-status error';
-        btn.disabled = false;
-        return;
-    }
-
     status.textContent = 'Connecting to ' + new URL(mirror).hostname + '...';
-    btn.style.display = 'none';
+    status.className = 'browser-login-status';
     canvas.style.display = 'block';
 
     const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=discord';
@@ -381,13 +345,11 @@ async function startBrowserLogin() {
     browserWs.onmessage = (evt) => {
         let msg;
         try { msg = JSON.parse(evt.data); } catch (_) { return; }
-
         if (msg.type === 'screenshot') {
             const img = new Image();
             img.onload = () => {
                 if (canvas.width !== msg.width || canvas.height !== msg.height) {
-                    canvas.width = msg.width;
-                    canvas.height = msg.height;
+                    canvas.width = msg.width; canvas.height = msg.height;
                 }
                 ctx.drawImage(img, 0, 0);
             };
@@ -410,351 +372,43 @@ async function startBrowserLogin() {
             status.textContent = 'Disconnected from server.';
             status.className = 'browser-login-status error';
             cleanupBrowserStream();
-            btn.style.display = '';
             btn.disabled = false;
+            canvas.style.display = 'none';
         }
     };
 
     browserWs.onerror = () => {};
 
-    // Forward mouse events from canvas → server
     function sendInput(msg) {
-        if (browserWs && browserWs.readyState === WebSocket.OPEN) {
-            browserWs.send(JSON.stringify(msg));
-        }
+        if (browserWs && browserWs.readyState === WebSocket.OPEN) browserWs.send(JSON.stringify(msg));
     }
-
     function canvasCoords(e) {
         const rect = canvas.getBoundingClientRect();
-        return {
-            x: (e.clientX - rect.left) / rect.width,
-            y: (e.clientY - rect.top) / rect.height
-        };
+        return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
     }
 
-    canvas.onmousemove = (e) => {
-        const c = canvasCoords(e);
-        sendInput({ type: 'mousemove', x: c.x, y: c.y });
-    };
-    canvas.onclick = (e) => {
-        const c = canvasCoords(e);
-        sendInput({ type: 'click', x: c.x, y: c.y, button: 'left' });
-    };
-    canvas.ondblclick = (e) => {
-        const c = canvasCoords(e);
-        sendInput({ type: 'dblclick', x: c.x, y: c.y });
-    };
-    canvas.oncontextmenu = (e) => {
-        e.preventDefault();
-        const c = canvasCoords(e);
-        sendInput({ type: 'click', x: c.x, y: c.y, button: 'right' });
-    };
-    canvas.onwheel = (e) => {
-        e.preventDefault();
-        const c = canvasCoords(e);
-        sendInput({ type: 'scroll', x: c.x, y: c.y, deltaX: e.deltaX, deltaY: e.deltaY });
-    };
-
-    // Forward keyboard events when canvas is focused
-    canvas.tabIndex = 0;
-    canvas.focus();
-    canvas.onkeydown = (e) => {
-        e.preventDefault();
-        sendInput({ type: 'keydown', key: e.key });
-    };
-    canvas.onkeyup = (e) => {
-        e.preventDefault();
-        sendInput({ type: 'keyup', key: e.key });
-    };
+    canvas.onmousemove  = (e) => { const c = canvasCoords(e); sendInput({ type: 'mousemove', x: c.x, y: c.y }); };
+    canvas.onclick      = (e) => { const c = canvasCoords(e); sendInput({ type: 'click', x: c.x, y: c.y, button: 'left' }); };
+    canvas.ondblclick   = (e) => { const c = canvasCoords(e); sendInput({ type: 'dblclick', x: c.x, y: c.y }); };
+    canvas.oncontextmenu = (e) => { e.preventDefault(); const c = canvasCoords(e); sendInput({ type: 'click', x: c.x, y: c.y, button: 'right' }); };
+    canvas.onwheel      = (e) => { e.preventDefault(); const c = canvasCoords(e); sendInput({ type: 'scroll', x: c.x, y: c.y, deltaX: e.deltaX, deltaY: e.deltaY }); };
+    canvas.tabIndex = 0; canvas.focus();
+    canvas.onkeydown = (e) => { e.preventDefault(); sendInput({ type: 'keydown', key: e.key }); };
+    canvas.onkeyup   = (e) => { e.preventDefault(); sendInput({ type: 'keyup', key: e.key }); };
 }
 
 function cleanupBrowserStream() {
     browserStreamActive = false;
-    if (browserWs) {
-        try { browserWs.close(); } catch (_) {}
-        browserWs = null;
-    }
+    if (browserWs) { try { browserWs.close(); } catch (_) {} browserWs = null; }
 }
 
-function showLoginError(msg) {
-    loginError.textContent = msg;
-    loginError.style.display = msg ? 'block' : 'none';
-}
-
-function resetMfaState() {
-    mfaTicket = '';
-    mfaIsBackup = false;
-    document.getElementById('mfa-section').classList.remove('active');
-    document.getElementById('credential-fields').classList.remove('hidden');
-    document.getElementById('mfa-code').value = '';
-    document.getElementById('mfa-toggle-backup').textContent = 'Use a backup code instead';
-}
-
-// ── Credential Login ──────────────────────────────────────
-const credLoginBtn = document.getElementById('cred-login-button');
-const credEmail    = document.getElementById('cred-email');
-const credPassword = document.getElementById('cred-password');
-const mfaCodeInput = document.getElementById('mfa-code');
-const mfaSubmitBtn = document.getElementById('mfa-submit-button');
-const mfaToggle    = document.getElementById('mfa-toggle-backup');
-
-credLoginBtn.addEventListener('click', () => loginWithCredentials());
-credPassword.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithCredentials(); });
-
-async function loginWithCredentials() {
-    const email = credEmail.value.trim();
-    const password = credPassword.value;
-    if (!email || !password) return;
-    credLoginBtn.disabled = true;
-    credLoginBtn.textContent = 'Logging in...';
-    showLoginError('');
-    try {
-        const res = await fetch(`${getApiBase()}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ login: email, password })
-        });
-        const data = await res.json();
-        if (data.token) { connect(data.token); return; }
-        if (data.mfa || data.ticket) {
-            mfaTicket = data.ticket;
-            document.getElementById('credential-fields').classList.add('hidden');
-            document.getElementById('mfa-section').classList.add('active');
-            mfaCodeInput.focus();
-            return;
-        }
-        if (data.captcha_key) { showLoginError('CAPTCHA required. Use QR code or token login instead.'); return; }
-        showLoginError(data.message || `Login failed (${res.status})`);
-    } catch (err) {
-        showLoginError(`Login failed: ${err.message}`);
-    } finally {
-        credLoginBtn.disabled = false;
-        credLoginBtn.textContent = 'Log In';
-    }
-}
-
-// ── QR Code Remote Auth ───────────────────────────────────
-const qrStatus   = document.getElementById('qr-status');
-const qrCanvas   = document.getElementById('qr-canvas');
-const qrUserInfo = document.getElementById('qr-user-info');
-
-function cleanupQrLogin() {
-    if (qrWebSocket) { qrWebSocket.close(); qrWebSocket = null; }
-    qrKeyPair = null;
-}
-
-let qrExpiryTimeout = null;
-let qrExpiryInterval = null;
-
-async function startQrLogin() {
-    cleanupQrLogin();
-    clearTimeout(qrExpiryTimeout);
-    clearInterval(qrExpiryInterval);
-    qrStatus.className = '';
-    qrStatus.textContent = 'Generating...';
-    qrCanvas.style.display = 'none';
-    qrUserInfo.classList.remove('active');
-    try {
-        qrKeyPair = await crypto.subtle.generateKey(
-            { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
-            true, ['encrypt', 'decrypt']
-        );
-        const pubDer = await crypto.subtle.exportKey('spki', qrKeyPair.publicKey);
-        const pubB64 = btoa(String.fromCharCode(...new Uint8Array(pubDer)));
-        qrStatus.textContent = 'Connecting...';
-        const ws = new WebSocket('wss://remote-auth-gateway.discord.gg/?v=2');
-        qrWebSocket = ws;
-        let hbInterval = null;
-        ws.onclose = () => {
-            clearInterval(hbInterval);
-            clearTimeout(qrExpiryTimeout);
-            clearInterval(qrExpiryInterval);
-            if (qrWebSocket === ws) {
-                qrStatus.textContent = 'Disconnected.';
-                qrStatus.className = 'error';
-                qrCanvas.style.display = 'none';
-                // Add clickable retry
-                const retryBtn = document.createElement('span');
-                retryBtn.textContent = ' Click to retry';
-                retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
-                retryBtn.addEventListener('click', () => startQrLogin());
-                qrStatus.appendChild(retryBtn);
-            }
-        };
-        ws.onerror = () => {
-            qrStatus.textContent = 'Connection failed.';
-            qrStatus.className = 'error';
-            const retryBtn = document.createElement('span');
-            retryBtn.textContent = ' Click to retry';
-            retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
-            retryBtn.addEventListener('click', () => startQrLogin());
-            qrStatus.appendChild(retryBtn);
-        };
-        ws.onmessage = async (event) => {
-            const msg = JSON.parse(event.data);
-            switch (msg.op) {
-                case 'hello':
-                    hbInterval = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 'heartbeat' })); }, msg.heartbeat_interval);
-                    ws.send(JSON.stringify({ op: 'init', encoded_public_key: pubB64 }));
-                    break;
-                case 'nonce_proof':
-                    try {
-                        const encNonce = Uint8Array.from(atob(msg.encrypted_nonce), c => c.charCodeAt(0));
-                        const dec = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, qrKeyPair.privateKey, encNonce);
-                        const hash = await crypto.subtle.digest('SHA-256', dec);
-                        const proof = btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-                        ws.send(JSON.stringify({ op: 'nonce_proof', proof }));
-                    } catch (e) { qrStatus.textContent = 'Crypto error: ' + e.message; qrStatus.className = 'error'; }
-                    break;
-                case 'pending_remote_init': {
-                    qrCanvas.style.display = 'block';
-                    renderQrCode('https://discord.com/ra/' + msg.fingerprint);
-                    // Start 2-minute expiry countdown
-                    let secondsLeft = 120;
-                    qrStatus.textContent = `Scan with Discord mobile app (${secondsLeft}s)`;
-                    qrExpiryInterval = setInterval(() => {
-                        secondsLeft--;
-                        if (secondsLeft > 0) {
-                            qrStatus.textContent = `Scan with Discord mobile app (${secondsLeft}s)`;
-                        }
-                    }, 1000);
-                    qrExpiryTimeout = setTimeout(() => {
-                        clearInterval(qrExpiryInterval);
-                        if (qrWebSocket === ws) {
-                            ws.close();
-                            qrCanvas.style.display = 'none';
-                            qrStatus.textContent = 'QR code expired.';
-                            qrStatus.className = 'error';
-                            const retryBtn = document.createElement('span');
-                            retryBtn.textContent = ' Click to refresh';
-                            retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
-                            retryBtn.addEventListener('click', () => startQrLogin());
-                            qrStatus.appendChild(retryBtn);
-                        }
-                    }, 120000);
-                    break;
-                }
-                case 'pending_ticket': {
-                    clearInterval(qrExpiryInterval);
-                    clearTimeout(qrExpiryTimeout);
-                    try {
-                        const encP = Uint8Array.from(atob(msg.encrypted_user_payload), c => c.charCodeAt(0));
-                        const decP = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, qrKeyPair.privateKey, encP);
-                        const parts = new TextDecoder().decode(decP).split(':');
-                        qrCanvas.style.display = 'none';
-                        qrUserInfo.classList.add('active');
-                        document.getElementById('qr-username').textContent = parts.slice(3).join(':');
-                        if (parts[2]) document.getElementById('qr-avatar').src = `https://cdn.discordapp.com/avatars/${parts[0]}/${parts[2]}.png?size=128`;
-                        qrStatus.textContent = 'Scanned! Confirm on your phone...';
-                        qrStatus.className = 'success';
-                    } catch (_) { qrStatus.textContent = 'Waiting for confirmation...'; }
-                    break;
-                }
-                case 'pending_login': {
-                    qrStatus.textContent = 'Login successful! Loading...';
-                    try {
-                        const res = await fetch(`${getApiBase()}/users/@me/remote-auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: msg.ticket }) });
-                        const data = await res.json();
-                        if (data.encrypted_token) {
-                            const encT = Uint8Array.from(atob(data.encrypted_token), c => c.charCodeAt(0));
-                            const token = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, qrKeyPair.privateKey, encT));
-                            cleanupQrLogin(); connect(token);
-                        } else { throw new Error(data.message || 'No token received'); }
-                    } catch (e) { qrStatus.textContent = 'Login failed: ' + e.message; qrStatus.className = 'error'; }
-                    break;
-                }
-                case 'cancel':
-                    clearInterval(qrExpiryInterval);
-                    clearTimeout(qrExpiryTimeout);
-                    qrStatus.textContent = 'Login cancelled.'; qrStatus.className = 'error';
-                    qrCanvas.style.display = 'none'; qrUserInfo.classList.remove('active');
-                    const retryBtn = document.createElement('span');
-                    retryBtn.textContent = ' Click to retry';
-                    retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
-                    retryBtn.addEventListener('click', () => startQrLogin());
-                    qrStatus.appendChild(retryBtn);
-                    break;
-                case 'heartbeat_ack': break;
-            }
-        };
-    } catch (err) { qrStatus.textContent = 'Failed: ' + err.message; qrStatus.className = 'error'; }
-}
-
-// ── QR Code Generator ─────────────────────────────────────
-function renderQrCode(text) {
-    const canvas = qrCanvas, ctx = canvas.getContext('2d');
-    const modules = generateQR(text), size = modules.length, scale = Math.floor(200 / size);
-    canvas.width = size * scale; canvas.height = size * scale;
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#000000';
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { if (modules[y][x]) ctx.fillRect(x * scale, y * scale, scale, scale); }
-}
-
-function generateQR(data) {
-    const dataBytes = new TextEncoder().encode(data), dataLen = dataBytes.length;
-    const capacityL = [0,17,32,53,78,106,134,154,192,230,271,321,367,425,458,520,586,644,718,792,858,929,1003,1091,1171,1273,1367,1465,1528,1628,1732,1840,1952,2068,2188,2303,2431,2563,2699,2809,2953];
-    let version = 1;
-    for (let v = 1; v <= 40; v++) { if (capacityL[v] >= dataLen + 3) { version = v; break; } }
-    const size = version * 4 + 17, totalCW = getDataCodewords(version), eccCW = getEccCodewords(version), dataCW = totalCW - eccCW;
-    const bits = [];
-    pushBits(bits, 0b0100, 4); pushBits(bits, dataLen, version <= 9 ? 8 : 16);
-    for (const b of dataBytes) pushBits(bits, b, 8);
-    const maxBits = dataCW * 8;
-    pushBits(bits, 0, Math.min(4, maxBits - bits.length));
-    while (bits.length % 8 !== 0) bits.push(0);
-    let pad = 0; while (bits.length < maxBits) { pushBits(bits, pad === 0 ? 0xEC : 0x11, 8); pad ^= 1; }
-    const dataCodewords = [];
-    for (let i = 0; i < bits.length; i += 8) { let byte = 0; for (let j = 0; j < 8; j++) byte = (byte << 1) | (bits[i + j] || 0); dataCodewords.push(byte); }
-    const ecBytes = rsEncode(dataCodewords, eccCW), allBytes = [...dataCodewords, ...ecBytes];
-    const grid = Array.from({ length: size }, () => Array(size).fill(null)), reserved = Array.from({ length: size }, () => Array(size).fill(false));
-    placeFinder(grid, reserved, 0, 0); placeFinder(grid, reserved, size - 7, 0); placeFinder(grid, reserved, 0, size - 7);
-    for (let i = 8; i < size - 8; i++) { grid[6][i] = i % 2 === 0 ? 1 : 0; grid[i][6] = i % 2 === 0 ? 1 : 0; reserved[6][i] = true; reserved[i][6] = true; }
-    if (version >= 2) { const positions = getAlignmentPositions(version); for (const r of positions) for (const c of positions) { if (reserved[r]?.[c]) continue; if ((r < 9 && c < 9) || (r < 9 && c >= size - 8) || (r >= size - 8 && c < 9)) continue; placeAlignment(grid, reserved, r, c); } }
-    for (let i = 0; i < 8; i++) { reserved[8][i] = true; reserved[i][8] = true; reserved[8][size - 1 - i] = true; reserved[size - 1 - i][8] = true; }
-    reserved[8][8] = true; grid[size - 8][8] = 1; reserved[size - 8][8] = true;
-    if (version >= 7) { for (let i = 0; i < 6; i++) for (let j = 0; j < 3; j++) { reserved[i][size - 11 + j] = true; reserved[size - 11 + j][i] = true; } }
-    let bitIdx = 0; const allBits = []; for (const byte of allBytes) for (let b = 7; b >= 0; b--) allBits.push((byte >> b) & 1);
-    let right = size - 1, upward = true;
-    while (right >= 0) { if (right === 6) right--; for (let row = 0; row < size; row++) { const y = upward ? size - 1 - row : row; for (const dx of [0, -1]) { const x = right + dx; if (x < 0 || x >= size || reserved[y][x]) continue; grid[y][x] = bitIdx < allBits.length ? allBits[bitIdx++] : 0; } } upward = !upward; right -= 2; }
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { if (!reserved[y][x] && (y + x) % 2 === 0) grid[y][x] ^= 1; }
-    const formatBits = getFormatBits(0);
-    for (let i = 0; i < 15; i++) { const bit = (formatBits >> (14 - i)) & 1; if (i < 6) grid[8][i] = bit; else if (i === 6) grid[8][7] = bit; else if (i === 7) grid[8][8] = bit; else if (i === 8) grid[7][8] = bit; else grid[14 - i][8] = bit; if (i < 8) grid[size - 1 - i][8] = bit; else grid[8][size - 15 + i] = bit; }
-    if (version >= 7) { const vInfo = getVersionBits(version); for (let i = 0; i < 18; i++) { const bit = (vInfo >> i) & 1; const r = Math.floor(i / 3), c = i % 3; grid[r][size - 11 + c] = bit; grid[size - 11 + c][r] = bit; } }
-    return grid;
-}
-function pushBits(arr, value, len) { for (let i = len - 1; i >= 0; i--) arr.push((value >> i) & 1); }
-function placeFinder(grid, reserved, row, col) { for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) { const y = row + r, x = col + c; if (y < 0 || x < 0 || y >= grid.length || x >= grid.length) continue; const inOuter = r === 0 || r === 6 || c === 0 || c === 6; const inInner = r >= 2 && r <= 4 && c >= 2 && c <= 4; grid[y][x] = (inOuter || inInner) && r >= 0 && r <= 6 && c >= 0 && c <= 6 ? 1 : 0; reserved[y][x] = true; } }
-function placeAlignment(grid, reserved, row, col) { for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) { const y = row + r, x = col + c; if (y < 0 || x < 0 || y >= grid.length || x >= grid.length) continue; grid[y][x] = (Math.abs(r) === 2 || Math.abs(c) === 2 || (r === 0 && c === 0)) ? 1 : 0; reserved[y][x] = true; } }
-function getAlignmentPositions(version) { if (version === 1) return []; const intervals = [0,0,0,0,0,0,0,16,18,20,22,24,26,28,20,22,24,24,26,28,28,22,24,24,26,26,28,28,24,24,26,26,26,28,28,24,26,26,26,28,28]; const step = intervals[version] || 28; const last = version * 4 + 10; const positions = [6]; let pos = last; while (pos > 6 + step) { positions.unshift(pos); pos -= step; } if (positions[0] !== 6) positions.unshift(6); if (positions[positions.length - 1] !== last) positions.push(last); return [...new Set(positions)].sort((a, b) => a - b); }
-function getDataCodewords(version) { const total = [0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706]; return total[version] || 0; }
-function getEccCodewords(version) { const ecc = [0,7,10,15,20,26,36,40,48,60,72,80,92,104,112,128,144,160,176,198,216,224,252,270,300,312,336,360,390,420,450,480,510,540,570,570,600,630,660,720,750]; return ecc[version] || 0; }
-function rsEncode(data, eccCount) { const gfExp = new Uint8Array(512), gfLog = new Uint8Array(256); let x = 1; for (let i = 0; i < 255; i++) { gfExp[i] = x; gfLog[x] = i; x = (x << 1) ^ (x >= 128 ? 0x11d : 0); } for (let i = 255; i < 512; i++) gfExp[i] = gfExp[i - 255]; const gfMul = (a, b) => a === 0 || b === 0 ? 0 : gfExp[gfLog[a] + gfLog[b]]; let gen = [1]; for (let i = 0; i < eccCount; i++) { const next = new Array(gen.length + 1).fill(0); for (let j = 0; j < gen.length; j++) { next[j] ^= gen[j]; next[j + 1] ^= gfMul(gen[j], gfExp[i]); } gen = next; } const result = new Array(eccCount).fill(0); for (const byte of data) { const lead = byte ^ result[0]; for (let i = 0; i < eccCount - 1; i++) result[i] = result[i + 1] ^ gfMul(lead, gen[i + 1]); result[eccCount - 1] = gfMul(lead, gen[eccCount]); } return result; }
-function getFormatBits(mask) { const data = (0b01 << 3) | mask; let bits = data << 10, gen = 0b10100110111; for (let i = 14; i >= 10; i--) { if (bits & (1 << i)) bits ^= gen << (i - 10); } return ((data << 10) | bits) ^ 0b101010000010010; }
-function getVersionBits(version) { let bits = version << 12, gen = 0b1111100100101; for (let i = 17; i >= 12; i--) { if (bits & (1 << i)) bits ^= gen << (i - 12); } return (version << 12) | bits; }
-
-// ── MFA ───────────────────────────────────────────────────
-mfaToggle.addEventListener('click', () => {
-    mfaIsBackup = !mfaIsBackup;
-    mfaToggle.textContent = mfaIsBackup ? 'Use TOTP code instead' : 'Use a backup code instead';
-    mfaCodeInput.placeholder = mfaIsBackup ? 'Backup code (xxxx-xxxx)' : '6-digit code';
-    mfaCodeInput.value = ''; mfaCodeInput.focus();
+document.getElementById('playwright-url-input').addEventListener('input', e => {
+    playwrightUrl = e.target.value.trim();
 });
-mfaSubmitBtn.addEventListener('click', () => submitMFA());
-mfaCodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitMFA(); });
+document.getElementById('browser-connect-btn').addEventListener('click', startBrowserLogin);
+document.getElementById('browser-find-btn').addEventListener('click', fetchGithubMirrors);
 
-async function submitMFA() {
-    const code = mfaCodeInput.value.trim();
-    if (!code || !mfaTicket) return;
-    mfaSubmitBtn.disabled = true; mfaSubmitBtn.textContent = 'Verifying...'; showLoginError('');
-    const endpoint = mfaIsBackup ? '/auth/mfa/backup-codes/verify' : '/auth/mfa/totp';
-    try {
-        const res = await fetch(`${getApiBase()}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, ticket: mfaTicket }) });
-        const data = await res.json();
-        if (data.token) { resetMfaState(); connect(data.token); return; }
-        showLoginError(data.message || `MFA failed (${res.status})`);
-    } catch (err) { showLoginError(`MFA failed: ${err.message}`); }
-    finally { mfaSubmitBtn.disabled = false; mfaSubmitBtn.textContent = 'Verify'; }
-}
+// ── (QR/Credentials login removed — use browser stream) ───
 
 // ── Settings Modal ────────────────────────────────────────
 function renderBlockedList(containerId, list, typeKey) {
@@ -860,8 +514,6 @@ async function connect(token) {
     if (isConnecting || !token) return;
     isConnecting = true;
     userToken = token.replace(/^"(.*)"$/, '$1');
-    loginButton.textContent = 'Connecting...';
-    loginButton.disabled = true;
     showLoginError('');
     try {
         const res = await fetch(`${getApiBase()}/users/@me`, { headers: { 'Authorization': userToken } });
@@ -869,20 +521,17 @@ async function connect(token) {
         if (!res.ok) throw new Error(`Server responded with ${res.status}.`);
         const userData = await res.json();
         currentUserId = userData.id;
-        sessionStorage.setItem('discord_user_token', userToken);
+        localStorage.setItem('discord_user_token', userToken);
         loginScreen.style.display = 'none';
         appScreen.style.display = 'flex';
         if (clientConfig.notifyMode !== 'off' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
         loadGuilds(); loadDMs(); updateE2EButton(); connectGateway(); startAutoRefresh();
     } catch (err) {
         showLoginError(`Connection failed: ${err.message}`);
-        loginButton.textContent = 'Connect'; loginButton.disabled = false;
-        sessionStorage.removeItem('discord_user_token'); tokenInput.value = '';
+        localStorage.removeItem('discord_user_token');
+        showLoginScreen();
     } finally { isConnecting = false; }
 }
-
-loginButton.addEventListener('click', () => connect(tokenInput.value.trim()));
-tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') connect(tokenInput.value.trim()); });
 
 // ── API ───────────────────────────────────────────────────
 async function apiCall(endpoint, options = {}) {
