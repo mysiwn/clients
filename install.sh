@@ -200,8 +200,8 @@ echo "╔═══════════════════════�
 if [ -n "$TUNNEL_URL" ]; then
 echo "║  Tunnel URL: $TUNNEL_URL"
 echo "║                                                          ║"
-echo "║  Discord   WS: $TUNNEL_URL/stream/discord               "
-echo "║  Instagram WS: $TUNNEL_URL/stream/instagram             "
+echo "║  Discord   WS: $TUNNEL_URL/stream?type=discord            "
+echo "║  Instagram WS: $TUNNEL_URL/stream?type=instagram        "
 echo "║                                                          ║"
 echo "║  Add this base URL to PLAYWRIGHT_MIRRORS in             "
 echo "║  index.js (Discord) and insta/index.js (Instagram)      "

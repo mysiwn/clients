@@ -295,7 +295,7 @@ async function startBrowserLogin() {
     btn.style.display = 'none';
     canvas.style.display = 'block';
 
-    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream/instagram';
+    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=instagram';
     browserWs = new WebSocket(wsUrl);
     browserStreamActive = true;
 
