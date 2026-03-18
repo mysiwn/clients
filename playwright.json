@@ -1,3 +1,5 @@
 {
-  "mirrors": []
+  "mirrors": [
+    "https://cds-dice-carry-reprints.trycloudflare.com"
+  ]
 }
