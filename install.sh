@@ -112,7 +112,37 @@ install_cloudflared() {
 
 install_cloudflared
 
-# ── 5. Generate start.sh ──────────────────────────────────
+# ── 5. Save credentials to config.json ───────────────────
+echo ""
+echo "[*] Login credentials setup (optional — press Enter to skip)..."
+echo "    Credentials are saved to config.json (gitignored) for auto-login."
+echo ""
+
+read -p "    Discord email    : " DISCORD_EMAIL
+read -s -p "    Discord password : " DISCORD_PASS
+echo ""
+read -p "    Instagram username : " INSTA_USER
+read -s -p "    Instagram password : " INSTA_PASS
+echo ""
+
+# Write config.json with whatever was provided (blanks = manual login)
+cat > "$SCRIPT_DIR/config.json" << CONFIGEOF
+{
+  "_comment": "Fill in credentials for auto-login. Leave blank to log in manually.",
+  "discord": {
+    "email": $(printf '%s' "$DISCORD_EMAIL" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),
+    "password": $(printf '%s' "$DISCORD_PASS" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+  },
+  "instagram": {
+    "username": $(printf '%s' "$INSTA_USER" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),
+    "password": $(printf '%s' "$INSTA_PASS" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+  }
+}
+CONFIGEOF
+
+echo "[OK] config.json saved"
+
+# ── 6. Generate start.sh ──────────────────────────────────
 echo ""
 echo "[*] Generating start.sh..."
 

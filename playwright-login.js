@@ -20,6 +20,20 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
+
+// ── Credentials config ────────────────────────────────────
+// Edit config.json (created by install.sh) or set values here directly.
+// Leave blank to log in manually via the browser window.
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+let CFG = { discord: { email: '', password: '' }, instagram: { username: '', password: '' } };
+try {
+    const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    CFG.discord.email      = raw.discord?.email      || '';
+    CFG.discord.password   = raw.discord?.password   || '';
+    CFG.instagram.username = raw.instagram?.username || '';
+    CFG.instagram.password = raw.instagram?.password || '';
+} catch (_) {}
 
 // ── Mirror URLs ───────────────────────────────────────────
 // List of hosted mirrors for each client. The script will
@@ -132,7 +146,17 @@ async function loginDiscord() {
 
     try {
         await page.goto('https://discord.com/login', { waitUntil: 'domcontentloaded' });
-        console.log('Browser opened. Please log in...');
+
+        if (CFG.discord.email && CFG.discord.password) {
+            console.log('Auto-filling credentials from config.json...');
+            try {
+                await page.fill('input[name="email"]', CFG.discord.email);
+                await page.fill('input[name="password"]', CFG.discord.password);
+                await page.click('button[type="submit"]');
+            } catch (_) { console.log('Auto-fill failed — log in manually'); }
+        } else {
+            console.log('Browser opened. Please log in...');
+        }
 
         await page.waitForURL('**/channels/**', { timeout: TIMEOUT_MS });
         console.log('Login detected! Extracting token...');
@@ -195,7 +219,17 @@ async function loginInstagram() {
 
     try {
         await page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'domcontentloaded' });
-        console.log('Browser opened. Please log in...');
+
+        if (CFG.instagram.username && CFG.instagram.password) {
+            console.log('Auto-filling credentials from config.json...');
+            try {
+                await page.fill('input[name="username"]', CFG.instagram.username);
+                await page.fill('input[name="password"]', CFG.instagram.password);
+                await page.click('button[type="submit"]');
+            } catch (_) { console.log('Auto-fill failed — log in manually'); }
+        } else {
+            console.log('Browser opened. Please log in...');
+        }
 
         // Wait for redirect away from login/challenge pages
         await page.waitForURL(url => {

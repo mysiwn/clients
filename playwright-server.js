@@ -18,10 +18,23 @@
 // ══════════════════════════════════════════════════════════
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { WebSocketServer } = require('ws');
 const { chromium } = require('playwright');
 
 // ── Config ───────────────────────────────────────────────
+// Load credentials from config.json if present
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+let CFG = { discord: { email: '', password: '' }, instagram: { username: '', password: '' } };
+try {
+    const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    CFG.discord.email    = raw.discord?.email    || '';
+    CFG.discord.password = raw.discord?.password || '';
+    CFG.instagram.username = raw.instagram?.username || '';
+    CFG.instagram.password = raw.instagram?.password || '';
+} catch (_) {}
+
 const PORT = process.env.PORT || 3000;
 const SERVICE = (() => {
     const idx = process.argv.indexOf('--service');
@@ -291,6 +304,24 @@ async function launchBrowser() {
 
     console.log(`Navigating to ${URLS[SERVICE]}...`);
     await page.goto(URLS[SERVICE], { waitUntil: 'domcontentloaded' });
+
+    // Auto-fill credentials if configured
+    if (SERVICE === 'discord' && CFG.discord.email && CFG.discord.password) {
+        console.log('Auto-filling Discord credentials...');
+        try {
+            await page.fill('input[name="email"]', CFG.discord.email);
+            await page.fill('input[name="password"]', CFG.discord.password);
+            await page.click('button[type="submit"]');
+        } catch (_) { console.log('Auto-fill failed — waiting for manual login'); }
+    } else if (SERVICE === 'instagram' && CFG.instagram.username && CFG.instagram.password) {
+        console.log('Auto-filling Instagram credentials...');
+        try {
+            await page.fill('input[name="username"]', CFG.instagram.username);
+            await page.fill('input[name="password"]', CFG.instagram.password);
+            await page.click('button[type="submit"]');
+        } catch (_) { console.log('Auto-fill failed — waiting for manual login'); }
+    }
+
     broadcast({ type: 'status', text: 'Browser ready — log in below' });
     startScreenshotLoop();
     console.log('Browser ready. Screenshot loop started.');
