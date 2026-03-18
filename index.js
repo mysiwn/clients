@@ -298,7 +298,7 @@ async function fetchGithubMirrors() {
         await Promise.all(mirrors.map(async url => {
             try {
                 const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-                if (r.ok) { const d = await r.json(); if (d.ok && d.discord?.ready) available.push(url); }
+                if (r.ok) { const d = await r.json(); if (d.ok && (d.discord?.ready || d.discord?.hasCachedToken)) available.push(url); }
             } catch (_) {}
         }));
         if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }

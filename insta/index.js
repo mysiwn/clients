@@ -214,6 +214,7 @@ function showLoginError(msg) {
 // ── Browser Stream Login ─────────────────────────────────
 let browserWs = null;
 let browserStreamActive = false;
+let pendingReset = false;
 
 const GITHUB_MIRRORS_URL = 'https://raw.githubusercontent.com/mysiwn/school/main/playwright.json';
 
@@ -232,7 +233,7 @@ async function fetchGithubMirrors() {
         await Promise.all(mirrors.map(async url => {
             try {
                 const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-                if (r.ok) { const d = await r.json(); if (d.ok && d.instagram?.ready) available.push(url); }
+                if (r.ok) { const d = await r.json(); if (d.ok && (d.instagram?.ready || d.instagram?.hasCachedSession)) available.push(url); }
             } catch (_) {}
         }));
         if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }
@@ -270,7 +271,13 @@ async function startBrowserLogin() {
     browserStreamActive = true;
 
     browserWs.onopen = () => {
-        status.textContent = 'Connected — log in below';
+        if (pendingReset) {
+            status.textContent = 'Requesting fresh login...';
+            browserWs.send(JSON.stringify({ type: 'reset' }));
+            pendingReset = false;
+        } else {
+            status.textContent = 'Connected — log in below';
+        }
         status.className = 'browser-login-status success';
     };
 
@@ -292,7 +299,7 @@ async function startBrowserLogin() {
             status.textContent = 'Login successful! Connecting...';
             status.className = 'browser-login-status success';
             cleanupBrowserStream();
-            connectWithSession(msg.sessionId, msg.csrfToken || '');
+            connectWithSession(msg.sessionId, msg.csrfToken || '', true);
         } else if (msg.type === 'status') {
             status.textContent = msg.text;
         } else if (msg.type === 'error') {
@@ -370,6 +377,10 @@ function cleanupBrowserStream() {
         try { browserWs.close(); } catch (_) {}
         browserWs = null;
     }
+    const btn = document.getElementById('browser-connect-btn');
+    if (btn) btn.disabled = false;
+    const canvas = document.getElementById('browser-canvas');
+    if (canvas) canvas.style.display = 'none';
 }
 
 document.getElementById('playwright-url-input').addEventListener('input', e => {
@@ -379,7 +390,7 @@ document.getElementById('browser-connect-btn').addEventListener('click', startBr
 document.getElementById('browser-find-btn').addEventListener('click', fetchGithubMirrors);
 
 // ── Session Connect ───────────────────────────────────────
-async function connectWithSession(sid, csrf) {
+async function connectWithSession(sid, csrf, fromServer = false) {
     if (isConnecting) return;
     isConnecting = true;
     sessionId = sid.trim();
@@ -411,10 +422,18 @@ async function connectWithSession(sid, csrf) {
         loadFeed();
         startAutoRefresh();
     } catch (err) {
-        showLoginError(`Connection failed: ${err.message}`);
         localStorage.removeItem('ig_session_id');
         localStorage.removeItem('ig_csrf_token');
-        showLoginScreen();
+        if (fromServer && playwrightUrl) {
+            // Cached session from server was stale — auto-reset and re-login
+            pendingReset = true;
+            showLoginError('Session expired — reconnecting for fresh login...');
+            showLoginScreen();
+            startBrowserLogin();
+        } else {
+            showLoginError(`Connection failed: ${err.message}`);
+            showLoginScreen();
+        }
     } finally {
         isConnecting = false;
     }
