@@ -150,8 +150,6 @@ function saveSettings() {
 const setupScreen     = document.getElementById('setup-screen');
 const loginScreen     = document.getElementById('login-screen');
 const appScreen       = document.getElementById('app');
-const sessionInput    = document.getElementById('session-input');
-const loginButton     = document.getElementById('login-button');
 const loginError      = document.getElementById('login-error');
 const sidebarContent  = document.getElementById('sidebar-content');
 const contentArea     = document.getElementById('content-area');
@@ -191,108 +189,77 @@ document.getElementById('setup-save-btn').addEventListener('click', () => {
 });
 
 // ── Init Flow ─────────────────────────────────────────────
-function getHashParam(key) {
-    const hash = location.hash.slice(1);
-    const params = new URLSearchParams(hash);
-    return params.get(key) || null;
-}
+let playwrightUrl = localStorage.getItem('ig_playwright_url') || '';
 
 function init() {
-    // Check for session injected via URL hash by playwright-login.js
-    // Hash fragment is never sent to any server — stays client-side only
-    const hashSession = getHashParam('pl_session');
-    if (hashSession) {
-        const hashCsrf = getHashParam('pl_csrf') || '';
-        // Clear hash immediately so token isn't visible in address bar
-        history.replaceState(null, '', location.pathname + location.search);
-        if (!clientConfig) {
-            saveClientConfig({ ...DEFAULT_CONFIG });
-        }
-        showLoginScreen();
-        connectWithSession(hashSession, hashCsrf);
-        return;
-    }
-    if (!clientConfig) { setupScreen.style.display = 'flex'; }
-    else { showLoginScreen(); }
+    if (!clientConfig) { setupScreen.style.display = 'flex'; return; }
+    const savedSession = localStorage.getItem('ig_session_id');
+    if (savedSession) { connectWithSession(savedSession, localStorage.getItem('ig_csrf_token') || ''); return; }
+    showLoginScreen();
 }
 
 function showLoginScreen() {
-    const savedSession = sessionStorage.getItem('ig_session_id');
-    const savedCsrf = sessionStorage.getItem('ig_csrf_token');
-    if (savedSession) {
-        sessionInput.value = savedSession;
-        loginScreen.style.display = 'flex';
-        connectWithSession(savedSession, savedCsrf || '');
-    } else {
-        loginScreen.style.display = 'flex';
-    }
+    document.getElementById('playwright-url-input').value = playwrightUrl;
+    loginScreen.style.display = 'flex';
 }
 
-// ── Login Tabs ────────────────────────────────────────────
-document.querySelectorAll('.login-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.login-panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-        showLoginError('');
-        resetMfaState();
-        if (tab.dataset.tab === 'browser') initBrowserStream();
-    });
-});
+function showLoginError(msg) {
+    loginError.textContent = msg;
+    loginError.style.display = msg ? 'block' : 'none';
+}
 
 // ── Browser Stream Login ─────────────────────────────────
-// Mirrors list — replace with your Cloudflare Tunnel URLs
-const PLAYWRIGHT_MIRRORS = [
-    // 'https://your-tunnel-id.trycloudflare.com',
-];
-
 let browserWs = null;
 let browserStreamActive = false;
 
-async function findActiveMirror() {
-    for (const url of PLAYWRIGHT_MIRRORS) {
-        try {
-            const res = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.ok && data.instagram) return url;
-            }
-        } catch (_) {}
-    }
-    return null;
-}
+const GITHUB_MIRRORS_URL = 'https://raw.githubusercontent.com/mysiwn/school/main/playwright.json';
 
-function initBrowserStream() {
+async function fetchGithubMirrors() {
     const status = document.getElementById('browser-status');
-    const btn = document.getElementById('browser-connect-btn');
-    if (browserStreamActive) return;
-    status.textContent = 'Add tunnel URLs to PLAYWRIGHT_MIRRORS in index.js';
+    status.textContent = 'Fetching mirrors from GitHub...';
     status.className = 'browser-login-status';
-    btn.style.display = '';
-    btn.onclick = startBrowserLogin;
+    try {
+        const res = await fetch(GITHUB_MIRRORS_URL, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const mirrors = data.mirrors || [];
+        if (!mirrors.length) { status.textContent = 'No mirrors listed on GitHub.'; status.className = 'browser-login-status error'; return; }
+        status.textContent = `Testing ${mirrors.length} mirror(s)...`;
+        const available = [];
+        await Promise.all(mirrors.map(async url => {
+            try {
+                const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
+                if (r.ok) { const d = await r.json(); if (d.ok && d.instagram) available.push(url); }
+            } catch (_) {}
+        }));
+        if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }
+        document.getElementById('playwright-url-input').value = available[0];
+        playwrightUrl = available[0];
+        localStorage.setItem('ig_playwright_url', playwrightUrl);
+        status.textContent = `Found ${available.length} mirror(s). Ready to connect.`;
+        status.className = 'browser-login-status success';
+    } catch (err) {
+        status.textContent = 'Failed to fetch mirrors: ' + err.message;
+        status.className = 'browser-login-status error';
+    }
 }
 
 async function startBrowserLogin() {
-    const status = document.getElementById('browser-status');
-    const canvas = document.getElementById('browser-canvas');
-    const btn = document.getElementById('browser-connect-btn');
-    const ctx = canvas.getContext('2d');
+    const urlInput = document.getElementById('playwright-url-input');
+    const status   = document.getElementById('browser-status');
+    const canvas   = document.getElementById('browser-canvas');
+    const btn      = document.getElementById('browser-connect-btn');
+    const ctx      = canvas.getContext('2d');
+
+    const mirror = urlInput.value.trim().replace(/\/+$/, '');
+    if (!mirror) { status.textContent = 'Enter a Playwright server URL first.'; status.className = 'browser-login-status error'; return; }
+
+    playwrightUrl = mirror;
+    localStorage.setItem('ig_playwright_url', playwrightUrl);
 
     btn.disabled = true;
-    status.textContent = 'Checking mirrors...';
-    status.className = 'browser-login-status';
-
-    const mirror = await findActiveMirror();
-    if (!mirror) {
-        status.textContent = 'No mirrors available. Add tunnel URLs to PLAYWRIGHT_MIRRORS.';
-        status.className = 'browser-login-status error';
-        btn.disabled = false;
-        return;
-    }
-
     status.textContent = 'Connecting to ' + new URL(mirror).hostname + '...';
-    btn.style.display = 'none';
+    status.className = 'browser-login-status';
     canvas.style.display = 'block';
 
     const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=instagram';
@@ -336,8 +303,8 @@ async function startBrowserLogin() {
             status.textContent = 'Disconnected from server.';
             status.className = 'browser-login-status error';
             cleanupBrowserStream();
-            btn.style.display = '';
             btn.disabled = false;
+            canvas.style.display = 'none';
         }
     };
 
@@ -402,198 +369,11 @@ function cleanupBrowserStream() {
     }
 }
 
-function showLoginError(msg) {
-    loginError.textContent = msg;
-    loginError.style.display = msg ? 'block' : 'none';
-}
-
-function resetMfaState() {
-    document.getElementById('mfa-section').classList.remove('active');
-    document.getElementById('challenge-section').classList.remove('active');
-    document.getElementById('credential-fields').classList.remove('hidden');
-    const mfaCode = document.getElementById('mfa-code');
-    if (mfaCode) mfaCode.value = '';
-}
-
-// ── Credential Login ──────────────────────────────────────
-const credLoginBtn  = document.getElementById('cred-login-button');
-const credUsername   = document.getElementById('cred-username');
-const credPassword   = document.getElementById('cred-password');
-const mfaCodeInput  = document.getElementById('mfa-code');
-const mfaSubmitBtn  = document.getElementById('mfa-submit-button');
-const challengeCode = document.getElementById('challenge-code');
-const challengeBtn  = document.getElementById('challenge-submit-button');
-
-let loginTwoFactorInfo = null;
-let challengeUrl = null;
-
-credLoginBtn.addEventListener('click', () => loginWithCredentials());
-credPassword.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithCredentials(); });
-
-async function loginWithCredentials() {
-    const username = credUsername.value.trim();
-    const password = credPassword.value;
-    if (!username || !password) return;
-    credLoginBtn.disabled = true;
-    credLoginBtn.textContent = 'Logging in...';
-    showLoginError('');
-    try {
-        const time = Math.floor(Date.now() / 1000);
-        const encPassword = `#PWD_INSTAGRAM_BROWSER:0:${time}:${password}`;
-        const body = new URLSearchParams({
-            username,
-            enc_password: encPassword,
-            queryParams: '{}',
-            optIntoOneTap: 'false'
-        });
-        let res;
-        try {
-            res = await fetch(getApiUrl('/accounts/login/'), {
-                method: 'POST',
-                headers: {
-                    'X-IG-App-ID': IG_APP_ID,
-                    'X-CSRFToken': 'missing',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'User-Agent': 'Instagram 275.0.0.27.98 Android'
-                },
-                body: body.toString(),
-                mode: 'cors'
-            });
-        } catch (err) {
-            throw new Error('Connection failed. Make sure your proxy URL is correct and you have internet access.');
-        }
-        const data = await res.json();
-        if (data.authenticated && data.userId) {
-            const cookies = res.headers.get('set-cookie') || '';
-            const sidMatch = cookies.match(/sessionid=([^;]+)/);
-            const csrfMatch = cookies.match(/csrftoken=([^;]+)/);
-            const sid = sidMatch ? sidMatch[1] : '';
-            const csrf = csrfMatch ? csrfMatch[1] : '';
-            if (sid) {
-                connectWithSession(sid, csrf);
-            } else {
-                showLoginError('Login succeeded but no session cookie received. Use Session ID tab instead.');
-            }
-            return;
-        }
-        if (data.two_factor_required) {
-            loginTwoFactorInfo = data.two_factor_info;
-            document.getElementById('credential-fields').classList.add('hidden');
-            document.getElementById('mfa-section').classList.add('active');
-            mfaCodeInput.focus();
-            return;
-        }
-        if (data.checkpoint_url || data.challenge) {
-            challengeUrl = data.checkpoint_url || data.challenge?.url;
-            document.getElementById('credential-fields').classList.add('hidden');
-            document.getElementById('challenge-section').classList.add('active');
-            challengeCode.focus();
-            showLoginError('A security code was sent to your email/phone.');
-            return;
-        }
-        showLoginError(data.message || `Login failed (${res.status})`);
-    } catch (err) {
-        showLoginError(`Login failed: ${err.message}`);
-    } finally {
-        credLoginBtn.disabled = false;
-        credLoginBtn.textContent = 'Log In';
-    }
-}
-
-// ── MFA ───────────────────────────────────────────────────
-mfaSubmitBtn.addEventListener('click', () => submitMFA());
-mfaCodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitMFA(); });
-
-async function submitMFA() {
-    const code = mfaCodeInput.value.trim();
-    if (!code || !loginTwoFactorInfo) return;
-    mfaSubmitBtn.disabled = true;
-    mfaSubmitBtn.textContent = 'Verifying...';
-    showLoginError('');
-    try {
-        const body = new URLSearchParams({
-            username: loginTwoFactorInfo.username,
-            verification_code: code,
-            two_factor_identifier: loginTwoFactorInfo.two_factor_identifier,
-            trust_this_device: '1'
-        });
-        const res = await fetch(getApiUrl('/accounts/two_factor_login/'), {
-            method: 'POST',
-            headers: {
-                'X-IG-App-ID': IG_APP_ID,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Instagram 275.0.0.27.98 Android'
-            },
-            body: body.toString()
-        });
-        const data = await res.json();
-        if (data.authenticated && data.userId) {
-            const cookies = res.headers.get('set-cookie') || '';
-            const sidMatch = cookies.match(/sessionid=([^;]+)/);
-            const csrfMatch = cookies.match(/csrftoken=([^;]+)/);
-            const sid = sidMatch ? sidMatch[1] : '';
-            const csrf = csrfMatch ? csrfMatch[1] : '';
-            if (sid) {
-                resetMfaState();
-                connectWithSession(sid, csrf);
-            } else {
-                showLoginError('2FA succeeded but no session cookie. Use Session ID tab.');
-            }
-            return;
-        }
-        showLoginError(data.message || `2FA failed (${res.status})`);
-    } catch (err) {
-        showLoginError(`2FA failed: ${err.message}`);
-    } finally {
-        mfaSubmitBtn.disabled = false;
-        mfaSubmitBtn.textContent = 'Verify';
-    }
-}
-
-// ── Challenge ─────────────────────────────────────────────
-challengeBtn.addEventListener('click', () => submitChallenge());
-challengeCode.addEventListener('keydown', e => { if (e.key === 'Enter') submitChallenge(); });
-
-async function submitChallenge() {
-    const code = challengeCode.value.trim();
-    if (!code || !challengeUrl) return;
-    challengeBtn.disabled = true;
-    challengeBtn.textContent = 'Submitting...';
-    showLoginError('');
-    try {
-        const body = new URLSearchParams({ security_code: code });
-        const res = await fetch(clientConfig.proxyBase + '/https://i.instagram.com' + challengeUrl, {
-            method: 'POST',
-            headers: {
-                'X-IG-App-ID': IG_APP_ID,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Instagram 275.0.0.27.98 Android'
-            },
-            body: body.toString()
-        });
-        const data = await res.json();
-        if (data.logged_in_user) {
-            const cookies = res.headers.get('set-cookie') || '';
-            const sidMatch = cookies.match(/sessionid=([^;]+)/);
-            const csrfMatch = cookies.match(/csrftoken=([^;]+)/);
-            const sid = sidMatch ? sidMatch[1] : '';
-            const csrf = csrfMatch ? csrfMatch[1] : '';
-            if (sid) {
-                resetMfaState();
-                connectWithSession(sid, csrf);
-            } else {
-                showLoginError('Challenge passed but no session cookie. Use Session ID tab.');
-            }
-            return;
-        }
-        showLoginError(data.message || `Challenge failed (${res.status})`);
-    } catch (err) {
-        showLoginError(`Challenge failed: ${err.message}`);
-    } finally {
-        challengeBtn.disabled = false;
-        challengeBtn.textContent = 'Submit';
-    }
-}
+document.getElementById('playwright-url-input').addEventListener('input', e => {
+    playwrightUrl = e.target.value.trim();
+});
+document.getElementById('browser-connect-btn').addEventListener('click', startBrowserLogin);
+document.getElementById('browser-find-btn').addEventListener('click', fetchGithubMirrors);
 
 // ── Session Connect ───────────────────────────────────────
 async function connectWithSession(sid, csrf) {
@@ -601,8 +381,6 @@ async function connectWithSession(sid, csrf) {
     isConnecting = true;
     sessionId = sid.trim();
     csrfToken = csrf.trim() || 'missing';
-    loginButton.textContent = 'Connecting...';
-    loginButton.disabled = true;
     showLoginError('');
     try {
         let res;
@@ -621,8 +399,8 @@ async function connectWithSession(sid, csrf) {
         if (!user || !user.pk) throw new Error('Could not retrieve user info.');
         currentUserId = String(user.pk);
         currentUsername = user.username;
-        sessionStorage.setItem('ig_session_id', sessionId);
-        sessionStorage.setItem('ig_csrf_token', csrfToken);
+        localStorage.setItem('ig_session_id', sessionId);
+        localStorage.setItem('ig_csrf_token', csrfToken);
         loginScreen.style.display = 'none';
         appScreen.style.display = 'flex';
         if (clientConfig.notifyMode !== 'off' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
@@ -631,18 +409,13 @@ async function connectWithSession(sid, csrf) {
         startAutoRefresh();
     } catch (err) {
         showLoginError(`Connection failed: ${err.message}`);
-        loginButton.textContent = 'Connect';
-        loginButton.disabled = false;
-        sessionStorage.removeItem('ig_session_id');
-        sessionStorage.removeItem('ig_csrf_token');
-        sessionInput.value = '';
+        localStorage.removeItem('ig_session_id');
+        localStorage.removeItem('ig_csrf_token');
+        showLoginScreen();
     } finally {
         isConnecting = false;
     }
 }
-
-loginButton.addEventListener('click', () => connectWithSession(sessionInput.value.trim(), ''));
-sessionInput.addEventListener('keydown', e => { if (e.key === 'Enter') connectWithSession(sessionInput.value.trim(), ''); });
 
 // ── Connection Status ─────────────────────────────────────
 function setConnectionStatus(status, tooltip) {

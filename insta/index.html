@@ -11,8 +11,7 @@
     <meta name="theme-color" content="#000000">
     <meta name="application-name" content="Instagram Client">
     <title>Local Instagram Client</title>
-    <link rel="stylesheet" id="remote-css" href="https://raw.githubusercontent.com/mysiwn/school/main/insta/index.css"
-          onerror="this.onerror=null;this.href='index.css';">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/mysiwn/school@main/insta/index.css">
 </head>
 
 <body>
@@ -45,46 +44,14 @@
             <p>Sign in to your account.</p>
             <a href="../faq.html" style="font-size:0.78rem;color:#667eea;text-decoration:none;margin-top:-4px" target="_blank">FAQ &amp; Security Info</a>
 
-            <div class="login-tabs">
-                <button class="login-tab active" data-tab="session">Session ID</button>
-                <button class="login-tab" data-tab="credentials">Login</button>
-                <button class="login-tab" data-tab="browser">Browser</button>
-            </div>
-
-            <!-- Session ID Tab -->
-            <div class="login-panel active" id="tab-session">
-                <div>
-                    <input type="password" class="login-input" id="session-input" placeholder="Paste your sessionid cookie">
-                    <button id="login-button" style="width:100%">Connect</button>
+            <div id="browser-login-container" style="width:100%">
+                <div id="browser-status" class="browser-login-status">Enter a server URL or find a mirror.</div>
+                <input type="text" class="login-input" id="playwright-url-input" placeholder="https://your-tunnel.trycloudflare.com" style="margin-top:8px">
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button id="browser-connect-btn" style="flex:1">Connect</button>
+                    <button id="browser-find-btn" style="flex:1;background:#555">Find a Mirror</button>
                 </div>
-            </div>
-
-            <!-- Credentials Tab -->
-            <div class="login-panel" id="tab-credentials">
-                <div id="credential-fields">
-                    <input type="text" class="login-input" id="cred-username" placeholder="Username or email">
-                    <input type="password" class="login-input" id="cred-password" placeholder="Password">
-                    <button id="cred-login-button" style="width:100%">Log In</button>
-                </div>
-                <div id="mfa-section">
-                    <span class="login-label">Two-Factor Authentication</span>
-                    <input type="text" class="login-input" id="mfa-code" placeholder="6-digit code" autocomplete="one-time-code">
-                    <button id="mfa-submit-button" style="width:100%">Verify</button>
-                </div>
-                <div id="challenge-section">
-                    <span class="login-label">Security Challenge</span>
-                    <input type="text" class="login-input" id="challenge-code" placeholder="Security code from email/SMS">
-                    <button id="challenge-submit-button" style="width:100%">Submit</button>
-                </div>
-            </div>
-
-            <!-- Browser Stream Tab -->
-            <div class="login-panel" id="tab-browser">
-                <div id="browser-login-container">
-                    <div id="browser-status" class="browser-login-status">Click to connect to a streaming server</div>
-                    <canvas id="browser-canvas" class="browser-canvas" style="display:none"></canvas>
-                    <button id="browser-connect-btn" style="width:100%">Connect to Browser</button>
-                </div>
+                <canvas id="browser-canvas" class="browser-canvas" style="display:none;margin-top:12px"></canvas>
             </div>
 
             <div class="notice">
@@ -173,18 +140,7 @@
         </div>
     </div>
 
-    <script>
-        (function(){
-            var s=document.createElement('script');
-            s.src='https://raw.githubusercontent.com/mysiwn/school/main/insta/index.js';
-            s.onerror=function(){
-                var f=document.createElement('script');
-                f.src='index.js';
-                document.body.appendChild(f);
-            };
-            document.body.appendChild(s);
-        })();
-    </script>
+    <script src="https://cdn.jsdelivr.net/gh/mysiwn/school@main/insta/index.js"></script>
 </body>
 
 </html>
