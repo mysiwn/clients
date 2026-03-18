@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Instagram Client">
+    <meta name="theme-color" content="#000000">
+    <meta name="application-name" content="Instagram Client">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https: wss:; img-src 'self' blob: data:; font-src 'self'; manifest-src blob:; worker-src blob:;">
+    <title>Local Instagram Client</title>
+    <link rel="stylesheet" href="index.css">
+    <noscript><style>body{display:flex;justify-content:center;align-items:center;height:100vh;background:#000;color:#fff;font-family:sans-serif}body::after{content:'JavaScript is required to use this client.'}</style></noscript>
+</head>
+
+<body>
+
+    <!-- ── Setup Screen ─────────────────────────────────── -->
+    <div id="setup-screen">
+        <div class="login-box">
+            <h2>Setup</h2>
+            <p>Configure your client before first use.</p>
+            <div class="setup-field">
+                <label>CORS Proxy URL</label>
+                <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
+            </div>
+            <div class="setup-field">
+                <label>Vault PIN (encrypts all stored data)</label>
+                <input type="password" class="login-input" id="setup-pin" placeholder="Enter a PIN (4+ characters)" minlength="4" autocomplete="new-password">
+            </div>
+            <div class="setup-field">
+                <label>Notifications</label>
+                <select id="setup-notify-mode">
+                    <option value="dm">DMs only</option>
+                    <option value="all">All activity</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <button id="setup-save-btn" style="width:100%">Save & Continue</button>
+        </div>
+    </div>
+
+    <!-- ── Login Screen ─────────────────────────────────── -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h2 class="ig-logo">Instagram</h2>
+            <p>Sign in to your account.</p>
+            <a href="../faq.html" style="font-size:0.78rem;color:#667eea;text-decoration:none;margin-top:-4px" target="_blank" rel="noopener">FAQ &amp; Security Info</a>
+
+            <div id="browser-login-container" style="width:100%">
+                <div id="browser-status" class="browser-login-status">Enter a server URL or find a mirror.</div>
+                <input type="text" class="login-input" id="playwright-url-input" placeholder="https://xxxx.ngrok-free.app" style="margin-top:8px">
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button id="browser-connect-btn" style="flex:1">Connect</button>
+                    <button id="browser-find-btn" style="flex:1;background:#555">Find a Mirror</button>
+                </div>
+                <canvas id="browser-canvas" class="browser-canvas" style="display:none;margin-top:12px"></canvas>
+            </div>
+
+            <div class="notice">
+                Requests route through an encrypted CORS proxy.
+            </div>
+            <div id="login-error" style="color:#ed4245;font-size:0.85rem;display:none"></div>
+        </div>
+    </div>
+
+    <!-- ── Settings Modal ───────────────────────────────── -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>Settings</h3>
+            <div>
+                <label>Proxy URL</label>
+                <input type="text" id="setting-proxy-url">
+            </div>
+            <div>
+                <label>Notifications</label>
+                <select id="setting-notify-mode">
+                    <option value="dm">DMs only</option>
+                    <option value="all">All activity</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <hr class="modal-separator">
+            <div>
+                <label>Auto-Refresh Interval (seconds, 0 to disable)</label>
+                <input type="number" id="setting-refresh" min="30" value="0">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="settings-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── New DM Modal ─────────────────────────────────── -->
+    <div id="new-dm-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>New Message</h3>
+            <div>
+                <label>Search Users</label>
+                <input type="text" id="new-dm-search" placeholder="Search by username...">
+            </div>
+            <div id="new-dm-results" class="search-results"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="new-dm-cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Post Viewer Modal ────────────────────────────── -->
+    <div id="post-modal" class="modal-overlay">
+        <div class="modal post-viewer-modal">
+            <div id="post-viewer-content"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="post-modal-close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── App ──────────────────────────────────────────── -->
+    <div id="app">
+        <div class="sidebar">
+            <div class="sidebar-nav">
+                <button class="nav-tab active" data-view="feed">Feed</button>
+                <button class="nav-tab" data-view="inbox">Inbox</button>
+                <button class="nav-tab" data-view="explore">Explore</button>
+                <button class="nav-tab" data-view="profile">Profile</button>
+            </div>
+            <div class="sidebar-content" id="sidebar-content"></div>
+        </div>
+        <div class="main">
+            <div class="header" id="header">
+                <span id="header-title">Feed</span>
+                <div class="connection-status disconnected" id="connection-status">
+                    <span class="connection-status-tooltip" id="connection-status-tooltip">Polling</span>
+                </div>
+                <button class="settings-btn" id="settings-open-btn">Settings</button>
+            </div>
+            <div class="content-area" id="content-area"></div>
+            <div class="input-area" id="dm-input-area" style="display:none">
+                <input type="text" id="message-input" placeholder="Message..." disabled>
+                <button id="send-button" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/security.js"></script>
+    <script src="index.js"></script>
+</body>
+
+</html>
