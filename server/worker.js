@@ -467,19 +467,19 @@ async function handleGetMirrors(env, origin, requestId) {
   const corsHeaders = getCorsHeaders(origin, env);
   const kv = env.MIRRORS;
   if (!kv) {
-    return new Response(JSON.stringify([]), {
+    return new Response(JSON.stringify({ mirrors: [] }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
   }
   try {
     const list = await kv.list({ limit: 100 });
-    const mirrors = [];
+    const urls = [];
     for (const key of list.keys) {
       const val = await kv.get(key.name, { type: "json" });
-      if (val) mirrors.push(val);
+      if (val && val.url) urls.push(val.url);
     }
-    return new Response(JSON.stringify(mirrors), {
+    return new Response(JSON.stringify({ mirrors: urls }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
@@ -598,6 +598,68 @@ async function handleDeleteMirror(request, env, origin, requestId) {
   });
 }
 
+async function handleContributeMirror(request, env, origin, requestId) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return errJson(400, "Invalid JSON body", requestId, origin, env);
+  }
+
+  const { url } = body;
+  if (!url || typeof url !== "string") {
+    return errJson(400, "Missing or invalid url", requestId, origin, env);
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return errJson(400, "Invalid URL format", requestId, origin, env);
+  }
+
+  if (parsedUrl.protocol !== "https:" && !parsedUrl.hostname.endsWith(".ngrok-free.app") && !parsedUrl.hostname.endsWith(".ngrok.io")) {
+    return errJson(400, "URL must be HTTPS or ngrok", requestId, origin, env);
+  }
+
+  // Health check
+  try {
+    const statusUrl = url.replace(/\/+$/, "") + "/status";
+    const resp = await fetch(statusUrl, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) {
+      return errJson(502, "Mirror health check failed: HTTP " + resp.status, requestId, origin, env);
+    }
+  } catch (err) {
+    return errJson(502, "Mirror health check failed: " + (err.message || "timeout"), requestId, origin, env);
+  }
+
+  const kv = env.MIRRORS;
+  if (!kv) {
+    return errJson(500, "MIRRORS KV namespace not bound", requestId, origin, env);
+  }
+
+  const kvKey = parsedUrl.host + parsedUrl.pathname;
+  const entry = {
+    url: url,
+    registeredAt: new Date().toISOString(),
+    contributed: true,
+    discordReady: true,
+    instagramReady: true
+  };
+
+  try {
+    await kv.put(kvKey, JSON.stringify(entry), { expirationTtl: 1800 });
+  } catch (err) {
+    return errJson(500, "Failed to register mirror", requestId, origin, env);
+  }
+
+  const corsHeaders = getCorsHeaders(origin, env);
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 201,
+    headers: { "Content-Type": "application/json", ...corsHeaders }
+  });
+}
+
 // ── Main worker ───────────────────────────────────────────
 export default {
   async fetch(request, env, ctx) {
@@ -701,6 +763,12 @@ export default {
       const rl = checkRateLimit(ip, "mirrors");
       if (rl > 0) return rateLimitResponse(rl, origin, env, requestId);
       return handleRegisterMirror(request, env, origin, requestId);
+    }
+
+    if (url.pathname === "/mirrors/contribute" && request.method === "POST") {
+      const rl = checkRateLimit(ip, "mirrors");
+      if (rl > 0) return rateLimitResponse(rl, origin, env, requestId);
+      return handleContributeMirror(request, env, origin, requestId);
     }
 
     // ── /image endpoint ───────────────────────────────────

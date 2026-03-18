@@ -12,11 +12,8 @@
 //   ws://localhost:3000/stream?type=discord
 //   ws://localhost:3000/stream?type=instagram
 //
-// Expose with ngrok:
-//   ngrok http 3000
-//
-// Then add the ngrok URL to PLAYWRIGHT_MIRRORS
-// in index.js and insta/index.js
+// Quick start:
+//   bash contribute.sh
 // ══════════════════════════════════════════════════════════
 
 const http = require('http');
