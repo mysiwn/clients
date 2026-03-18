@@ -6,9 +6,12 @@
   "scripts": {
     "login:discord": "node playwright-login.js discord",
     "login:instagram": "node playwright-login.js instagram",
+    "server:discord": "node playwright-server.js --service discord",
+    "server:instagram": "node playwright-server.js --service instagram",
     "install:browser": "npx playwright install chromium"
   },
   "dependencies": {
-    "playwright": "^1.49.0"
+    "playwright": "^1.49.0",
+    "ws": "^8.18.0"
   }
 }

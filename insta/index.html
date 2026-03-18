@@ -48,6 +48,7 @@
             <div class="login-tabs">
                 <button class="login-tab active" data-tab="session">Session ID</button>
                 <button class="login-tab" data-tab="credentials">Login</button>
+                <button class="login-tab" data-tab="browser">Browser</button>
             </div>
 
             <!-- Session ID Tab -->
@@ -74,6 +75,15 @@
                     <span class="login-label">Security Challenge</span>
                     <input type="text" class="login-input" id="challenge-code" placeholder="Security code from email/SMS">
                     <button id="challenge-submit-button" style="width:100%">Submit</button>
+                </div>
+            </div>
+
+            <!-- Browser Stream Tab -->
+            <div class="login-panel" id="tab-browser">
+                <div id="browser-login-container">
+                    <div id="browser-status" class="browser-login-status">Click to connect to a streaming server</div>
+                    <canvas id="browser-canvas" class="browser-canvas" style="display:none"></canvas>
+                    <button id="browser-connect-btn" style="width:100%">Connect to Browser</button>
                 </div>
             </div>
 

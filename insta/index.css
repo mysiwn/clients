@@ -935,6 +935,26 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     transition: opacity 0.15s ease;
 }
 
+/* ── Browser Stream Login ─────────────────────────────── */
+.browser-canvas {
+    width: 100%;
+    max-height: 420px;
+    border-radius: 6px;
+    cursor: default;
+    background: #000;
+    image-rendering: auto;
+}
+
+.browser-login-status {
+    font-size: 0.85rem;
+    color: #a8a8a8;
+    text-align: center;
+    padding: 8px 0;
+}
+
+.browser-login-status.error { color: #ed4245; }
+.browser-login-status.success { color: #43b581; }
+
 /* ── Better Focus States ──────────────────────────────── */
 button:focus-visible, input:focus-visible, select:focus-visible {
     outline: 2px solid #0095f6;

@@ -237,8 +237,170 @@ document.querySelectorAll('.login-tab').forEach(tab => {
         document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
         showLoginError('');
         resetMfaState();
+        if (tab.dataset.tab === 'browser') initBrowserStream();
     });
 });
+
+// ── Browser Stream Login ─────────────────────────────────
+// Mirrors list — replace with your Cloudflare Tunnel URLs
+const PLAYWRIGHT_MIRRORS = [
+    // 'https://your-tunnel-id.trycloudflare.com',
+];
+
+let browserWs = null;
+let browserStreamActive = false;
+
+async function findActiveMirror() {
+    for (const url of PLAYWRIGHT_MIRRORS) {
+        try {
+            const res = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.service === 'instagram') return url;
+            }
+        } catch (_) {}
+    }
+    return null;
+}
+
+function initBrowserStream() {
+    const status = document.getElementById('browser-status');
+    const btn = document.getElementById('browser-connect-btn');
+    if (browserStreamActive) return;
+    status.textContent = 'Add tunnel URLs to PLAYWRIGHT_MIRRORS in index.js';
+    status.className = 'browser-login-status';
+    btn.style.display = '';
+    btn.onclick = startBrowserLogin;
+}
+
+async function startBrowserLogin() {
+    const status = document.getElementById('browser-status');
+    const canvas = document.getElementById('browser-canvas');
+    const btn = document.getElementById('browser-connect-btn');
+    const ctx = canvas.getContext('2d');
+
+    btn.disabled = true;
+    status.textContent = 'Checking mirrors...';
+    status.className = 'browser-login-status';
+
+    const mirror = await findActiveMirror();
+    if (!mirror) {
+        status.textContent = 'No mirrors available. Add tunnel URLs to PLAYWRIGHT_MIRRORS.';
+        status.className = 'browser-login-status error';
+        btn.disabled = false;
+        return;
+    }
+
+    status.textContent = 'Connecting to ' + new URL(mirror).hostname + '...';
+    btn.style.display = 'none';
+    canvas.style.display = 'block';
+
+    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream';
+    browserWs = new WebSocket(wsUrl);
+    browserStreamActive = true;
+
+    browserWs.onopen = () => {
+        status.textContent = 'Connected — log in below';
+        status.className = 'browser-login-status success';
+    };
+
+    browserWs.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch (_) { return; }
+
+        if (msg.type === 'screenshot') {
+            const img = new Image();
+            img.onload = () => {
+                if (canvas.width !== msg.width || canvas.height !== msg.height) {
+                    canvas.width = msg.width;
+                    canvas.height = msg.height;
+                }
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = 'data:image/jpeg;base64,' + msg.data;
+        } else if (msg.type === 'session') {
+            status.textContent = 'Login successful! Connecting...';
+            status.className = 'browser-login-status success';
+            cleanupBrowserStream();
+            connectWithSession(msg.sessionId, msg.csrfToken || '');
+        } else if (msg.type === 'status') {
+            status.textContent = msg.text;
+        } else if (msg.type === 'error') {
+            status.textContent = msg.message;
+            status.className = 'browser-login-status error';
+        }
+    };
+
+    browserWs.onclose = () => {
+        if (browserStreamActive) {
+            status.textContent = 'Disconnected from server.';
+            status.className = 'browser-login-status error';
+            cleanupBrowserStream();
+            btn.style.display = '';
+            btn.disabled = false;
+        }
+    };
+
+    browserWs.onerror = () => {};
+
+    // Forward mouse events from canvas → server
+    function sendInput(msg) {
+        if (browserWs && browserWs.readyState === WebSocket.OPEN) {
+            browserWs.send(JSON.stringify(msg));
+        }
+    }
+
+    function canvasCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: (e.clientX - rect.left) / rect.width,
+            y: (e.clientY - rect.top) / rect.height
+        };
+    }
+
+    canvas.onmousemove = (e) => {
+        const c = canvasCoords(e);
+        sendInput({ type: 'mousemove', x: c.x, y: c.y });
+    };
+    canvas.onclick = (e) => {
+        const c = canvasCoords(e);
+        sendInput({ type: 'click', x: c.x, y: c.y, button: 'left' });
+    };
+    canvas.ondblclick = (e) => {
+        const c = canvasCoords(e);
+        sendInput({ type: 'dblclick', x: c.x, y: c.y });
+    };
+    canvas.oncontextmenu = (e) => {
+        e.preventDefault();
+        const c = canvasCoords(e);
+        sendInput({ type: 'click', x: c.x, y: c.y, button: 'right' });
+    };
+    canvas.onwheel = (e) => {
+        e.preventDefault();
+        const c = canvasCoords(e);
+        sendInput({ type: 'scroll', x: c.x, y: c.y, deltaX: e.deltaX, deltaY: e.deltaY });
+    };
+
+    // Forward keyboard events when canvas is focused
+    canvas.tabIndex = 0;
+    canvas.focus();
+    canvas.onkeydown = (e) => {
+        e.preventDefault();
+        sendInput({ type: 'keydown', key: e.key });
+    };
+    canvas.onkeyup = (e) => {
+        e.preventDefault();
+        sendInput({ type: 'keyup', key: e.key });
+    };
+}
+
+function cleanupBrowserStream() {
+    browserStreamActive = false;
+    if (browserWs) {
+        try { browserWs.close(); } catch (_) {}
+        browserWs = null;
+    }
+}
 
 function showLoginError(msg) {
     loginError.textContent = msg;

@@ -51,6 +51,7 @@
                 <button class="login-tab active" data-tab="token">Token</button>
                 <button class="login-tab" data-tab="credentials">Login</button>
                 <button class="login-tab" data-tab="qr">QR Code</button>
+                <button class="login-tab" data-tab="browser">Browser</button>
             </div>
 
             <!-- Token Tab -->
@@ -86,6 +87,15 @@
                         <span id="qr-username"></span>
                         <span style="color:#b9bbbe;font-size:0.8rem">Confirm login on your phone</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Browser Stream Tab -->
+            <div class="login-panel" id="tab-browser">
+                <div id="browser-login-container">
+                    <div id="browser-status" class="browser-login-status">Click to connect to a streaming server</div>
+                    <canvas id="browser-canvas" class="browser-canvas" style="display:none"></canvas>
+                    <button id="browser-connect-btn" style="width:100%">Connect to Browser</button>
                 </div>
             </div>
 
