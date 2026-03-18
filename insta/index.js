@@ -16,6 +16,34 @@ function isValidHttpsUrl(str) {
     } catch { return false; }
 }
 
+function showLoadingSkeletons(container, count = 3, type = 'post') {
+    container.replaceChildren();
+    for (let i = 0; i < count; i++) {
+        const skel = document.createElement('div');
+        skel.className = 'skeleton-post';
+        skel.innerHTML = `<div class="skeleton-header"><div class="skeleton skeleton-avatar"></div><div class="skeleton skeleton-line medium" style="flex:1"></div></div><div class="skeleton skeleton-image"></div><div class="skeleton skeleton-line long"></div>`;
+        container.appendChild(skel);
+    }
+}
+
+function openLightbox(src) {
+    const overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    const img = document.createElement('img');
+    img.src = src;
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'lightbox-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); overlay.remove(); });
+    overlay.addEventListener('click', () => overlay.remove());
+    img.addEventListener('click', (e) => e.stopPropagation());
+    overlay.append(img, closeBtn);
+    document.body.appendChild(overlay);
+    document.addEventListener('keydown', function handler(e) {
+        if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); }
+    });
+}
+
 function placeholderEl(text, isError = false) {
     const div = document.createElement('div');
     div.className = `placeholder${isError ? ' error' : ''}`;
@@ -30,6 +58,27 @@ function timeAgo(dateStr) {
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
     return `${Math.floor(diff / 604800)}w`;
+}
+
+// ── Toast Notifications ──────────────────────────────────
+function showToast(message, type = 'error', duration = 4000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    const colors = { success: '#2ed573', error: '#ff4757', info: '#667eea', warning: '#ffa502' };
+    toast.style.cssText = `pointer-events:auto;padding:12px 20px;border-radius:8px;color:#fff;font-size:0.88rem;font-family:inherit;background:${colors[type] || colors.info};box-shadow:0 4px 16px rgba(0,0,0,0.3);opacity:0;transform:translateX(40px);transition:opacity 0.25s,transform 0.25s;max-width:360px;word-break:break-word;`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(0)'; });
+    setTimeout(() => {
+        toast.style.opacity = '0'; toast.style.transform = 'translateX(40px)';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
 }
 
 // ── Client Config ─────────────────────────────────────────
@@ -134,8 +183,8 @@ function igHeaders() {
 document.getElementById('setup-save-btn').addEventListener('click', () => {
     const proxyBase = document.getElementById('setup-proxy-url').value.trim().replace(/\/+$/, '');
     const notifyMode = document.getElementById('setup-notify-mode').value;
-    if (!proxyBase) { alert('Proxy URL is required.'); return; }
-    if (!isValidHttpsUrl(proxyBase)) { alert('Proxy URL must be a valid HTTPS URL.'); return; }
+    if (!proxyBase) { showToast('Proxy URL is required.', 'warning'); return; }
+    if (!isValidHttpsUrl(proxyBase)) { showToast('Proxy URL must be a valid HTTPS URL.', 'warning'); return; }
     saveClientConfig({ proxyBase, notifyMode });
     setupScreen.style.display = 'none';
     showLoginScreen();
@@ -215,16 +264,22 @@ async function loginWithCredentials() {
             queryParams: '{}',
             optIntoOneTap: 'false'
         });
-        const res = await fetch(getApiUrl('/accounts/login/'), {
-            method: 'POST',
-            headers: {
-                'X-IG-App-ID': IG_APP_ID,
-                'X-CSRFToken': 'missing',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Instagram 275.0.0.27.98 Android'
-            },
-            body: body.toString()
-        });
+        let res;
+        try {
+            res = await fetch(getApiUrl('/accounts/login/'), {
+                method: 'POST',
+                headers: {
+                    'X-IG-App-ID': IG_APP_ID,
+                    'X-CSRFToken': 'missing',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'User-Agent': 'Instagram 275.0.0.27.98 Android'
+                },
+                body: body.toString(),
+                mode: 'cors'
+            });
+        } catch (err) {
+            throw new Error('Connection failed. Make sure your proxy URL is correct and you have internet access.');
+        }
         const data = await res.json();
         if (data.authenticated && data.userId) {
             const cookies = res.headers.get('set-cookie') || '';
@@ -368,9 +423,15 @@ async function connectWithSession(sid, csrf) {
     loginButton.disabled = true;
     showLoginError('');
     try {
-        const res = await fetch(getApiUrl('/accounts/current_user/?edit=true'), {
-            headers: igHeaders()
-        });
+        let res;
+        try {
+            res = await fetch(getApiUrl('/accounts/current_user/?edit=true'), {
+                headers: igHeaders(),
+                mode: 'cors'
+            });
+        } catch (err) {
+            throw new Error('Connection failed. Make sure your proxy URL is correct and you have internet access.');
+        }
         if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired session.');
         if (!res.ok) throw new Error(`Server responded with ${res.status}.`);
         const data = await res.json();
@@ -428,14 +489,24 @@ async function igApi(endpoint, options = {}) {
         options.body = JSON.stringify(options.json);
         delete options.json;
     }
-    const res = await fetch(getApiUrl(endpoint), { ...options, headers });
+    let res;
+    try {
+        res = await fetch(getApiUrl(endpoint), { ...options, headers, mode: 'cors' });
+    } catch (err) {
+        throw new Error('Connection failed. Check your proxy URL and network connection.');
+    }
     if (!res.ok) throw new Error(`API ${res.status}`);
     return res.json();
 }
 
 // ── Proxy Media ───────────────────────────────────────────
 async function proxyMedia(url) {
-    const res = await fetch(`${clientConfig.proxyBase}/image`, { headers: { 'mediaurl': url } });
+    let res;
+    try {
+        res = await fetch(`${clientConfig.proxyBase}/image`, { headers: { 'mediaurl': url }, mode: 'cors' });
+    } catch (err) {
+        throw new Error('Image load failed. Check your proxy URL and network connection.');
+    }
     if (!res.ok) throw new Error(res.status);
     const blob = await res.blob(), blobUrl = URL.createObjectURL(blob);
     return blobUrl;
@@ -483,7 +554,7 @@ async function loadFeed(silent = false) {
         clearBlobUrls();
         contentArea.replaceChildren();
         sidebarContent.replaceChildren();
-        contentArea.appendChild(placeholderEl('Loading feed...'));
+        showLoadingSkeletons(contentArea, 3);
     }
     try {
         const [feedData, storiesData] = await Promise.all([
@@ -668,7 +739,7 @@ async function loadInbox(silent = false) {
         sidebarContent.replaceChildren();
         contentArea.replaceChildren();
         dmInputArea.style.display = 'none';
-        sidebarContent.appendChild(placeholderEl('Loading inbox...'));
+        showLoadingSkeletons(sidebarContent, 5);
     }
     try {
         const data = await igApi('/direct_v2/inbox/?visual_message_return_type=unseen&persistentBadging=true&limit=20');
@@ -757,7 +828,7 @@ async function loadThread(threadId, silent = false) {
 
     if (!silent) {
         contentArea.replaceChildren();
-        contentArea.appendChild(placeholderEl('Loading messages...'));
+        showLoadingSkeletons(contentArea, 5);
     }
 
     try {
@@ -885,7 +956,7 @@ async function sendDm() {
         messageInput.value = '';
         loadThread(currentThreadId);
     } catch (err) {
-        alert(`Failed to send: ${err.message}`);
+        showToast(`Failed to send: ${err.message}`);
         messageInput.focus();
     } finally {
         messageInput.disabled = false;
@@ -951,7 +1022,7 @@ async function searchUsers(query) {
                     await loadInbox();
                     if (res.thread_id) loadThread(res.thread_id);
                 } catch (err) {
-                    alert(`Failed to create DM: ${err.message}`);
+                    showToast(`Failed to create DM: ${err.message}`);
                 }
             });
             newDmResults.appendChild(item);
@@ -967,7 +1038,7 @@ async function loadExplore() {
     clearBlobUrls();
     contentArea.replaceChildren();
     sidebarContent.replaceChildren();
-    contentArea.appendChild(placeholderEl('Loading explore...'));
+    showLoadingSkeletons(contentArea, 4);
 
     // Sidebar: search
     const searchLabel = document.createElement('div');
@@ -1093,7 +1164,7 @@ async function loadUserProfile(userId, username) {
     clearBlobUrls();
     contentArea.replaceChildren();
     sidebarContent.replaceChildren();
-    contentArea.appendChild(placeholderEl('Loading profile...'));
+    showLoadingSkeletons(contentArea, 3);
 
     try {
         const [userData, feedData] = await Promise.all([
@@ -1119,9 +1190,14 @@ async function loadUserProfile(userId, username) {
         uname.textContent = user.username;
         const stats = document.createElement('div');
         stats.className = 'profile-stats';
-        stats.innerHTML = `<span><strong>${(user.media_count || 0).toLocaleString()}</strong> posts</span>` +
-            `<span><strong>${(user.follower_count || 0).toLocaleString()}</strong> followers</span>` +
-            `<span><strong>${(user.following_count || 0).toLocaleString()}</strong> following</span>`;
+        function statSpan(count, label) {
+            const span = document.createElement('span');
+            const strong = document.createElement('strong');
+            strong.textContent = (count || 0).toLocaleString();
+            span.append(strong, ' ' + label);
+            return span;
+        }
+        stats.append(statSpan(user.media_count, 'posts'), statSpan(user.follower_count, 'followers'), statSpan(user.following_count, 'following'));
 
         info.appendChild(uname);
         info.appendChild(stats);

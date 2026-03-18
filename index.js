@@ -2,6 +2,27 @@
 // Static Discord Client — index.js
 // ══════════════════════════════════════════════════════════
 
+// ── Toast Notifications ──────────────────────────────────
+function showToast(message, type = 'error', duration = 4000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    const colors = { success: '#2ed573', error: '#ff4757', info: '#5865f2', warning: '#ffa502' };
+    toast.style.cssText = `pointer-events:auto;padding:12px 20px;border-radius:8px;color:#fff;font-size:0.88rem;font-family:inherit;background:${colors[type] || colors.info};box-shadow:0 4px 16px rgba(0,0,0,0.3);opacity:0;transform:translateX(40px);transition:opacity 0.25s,transform 0.25s;max-width:360px;word-break:break-word;`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(0)'; });
+    setTimeout(() => {
+        toast.style.opacity = '0'; toast.style.transform = 'translateX(40px)';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 // ── Helpers ───────────────────────────────────────────────
 function escapeHtml(str) {
     return (str || '').replace(/[&<>"']/g, c => ({
@@ -15,6 +36,35 @@ function parseTwemoji(el) {
         folder:    'svg',
         ext:       '.svg',
         className: 'twemoji'
+    });
+}
+
+function showLoadingSkeletons(container, count = 5) {
+    container.replaceChildren();
+    for (let i = 0; i < count; i++) {
+        const skel = document.createElement('div');
+        skel.className = 'skeleton-message';
+        const widths = ['long', 'medium', 'short'];
+        skel.innerHTML = `<div class="skeleton skeleton-avatar"></div><div class="skeleton-lines"><div class="skeleton skeleton-line short"></div><div class="skeleton skeleton-line ${widths[i % 3]}"></div></div>`;
+        container.appendChild(skel);
+    }
+}
+
+function openLightbox(src) {
+    const overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    const img = document.createElement('img');
+    img.src = src;
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'lightbox-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); overlay.remove(); });
+    overlay.addEventListener('click', () => overlay.remove());
+    img.addEventListener('click', (e) => e.stopPropagation());
+    overlay.append(img, closeBtn);
+    document.body.appendChild(overlay);
+    document.addEventListener('keydown', function handler(e) {
+        if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); }
     });
 }
 
@@ -206,8 +256,8 @@ function isBlocked(list, id) {
 document.getElementById('setup-save-btn').addEventListener('click', () => {
     const proxyBase = document.getElementById('setup-proxy-url').value.trim().replace(/\/+$/, '');
     const notifyMode = document.getElementById('setup-notify-mode').value;
-    if (!proxyBase) { alert('Proxy URL is required.'); return; }
-    if (!isValidHttpsUrl(proxyBase)) { alert('Proxy URL must be a valid HTTPS URL.'); return; }
+    if (!proxyBase) { showToast('Proxy URL is required.', 'warning'); return; }
+    if (!isValidHttpsUrl(proxyBase)) { showToast('Proxy URL must be a valid HTTPS URL.', 'warning'); return; }
     saveClientConfig({ proxyBase, notifyMode });
     setupScreen.style.display = 'none';
     showLoginScreen();
@@ -311,8 +361,13 @@ function cleanupQrLogin() {
     qrKeyPair = null;
 }
 
+let qrExpiryTimeout = null;
+let qrExpiryInterval = null;
+
 async function startQrLogin() {
     cleanupQrLogin();
+    clearTimeout(qrExpiryTimeout);
+    clearInterval(qrExpiryInterval);
     qrStatus.className = '';
     qrStatus.textContent = 'Generating...';
     qrCanvas.style.display = 'none';
@@ -328,8 +383,31 @@ async function startQrLogin() {
         const ws = new WebSocket('wss://remote-auth-gateway.discord.gg/?v=2');
         qrWebSocket = ws;
         let hbInterval = null;
-        ws.onclose = () => { clearInterval(hbInterval); if (qrWebSocket === ws) { qrStatus.textContent = 'Disconnected. Switch tabs to retry.'; qrStatus.className = 'error'; } };
-        ws.onerror = () => { qrStatus.textContent = 'Connection failed.'; qrStatus.className = 'error'; };
+        ws.onclose = () => {
+            clearInterval(hbInterval);
+            clearTimeout(qrExpiryTimeout);
+            clearInterval(qrExpiryInterval);
+            if (qrWebSocket === ws) {
+                qrStatus.textContent = 'Disconnected.';
+                qrStatus.className = 'error';
+                qrCanvas.style.display = 'none';
+                // Add clickable retry
+                const retryBtn = document.createElement('span');
+                retryBtn.textContent = ' Click to retry';
+                retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
+                retryBtn.addEventListener('click', () => startQrLogin());
+                qrStatus.appendChild(retryBtn);
+            }
+        };
+        ws.onerror = () => {
+            qrStatus.textContent = 'Connection failed.';
+            qrStatus.className = 'error';
+            const retryBtn = document.createElement('span');
+            retryBtn.textContent = ' Click to retry';
+            retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
+            retryBtn.addEventListener('click', () => startQrLogin());
+            qrStatus.appendChild(retryBtn);
+        };
         ws.onmessage = async (event) => {
             const msg = JSON.parse(event.data);
             switch (msg.op) {
@@ -346,12 +424,37 @@ async function startQrLogin() {
                         ws.send(JSON.stringify({ op: 'nonce_proof', proof }));
                     } catch (e) { qrStatus.textContent = 'Crypto error: ' + e.message; qrStatus.className = 'error'; }
                     break;
-                case 'pending_remote_init':
-                    qrStatus.textContent = 'Scan with Discord mobile app';
-                    renderQrCode('https://discord.com/ra/' + msg.fingerprint);
+                case 'pending_remote_init': {
                     qrCanvas.style.display = 'block';
+                    renderQrCode('https://discord.com/ra/' + msg.fingerprint);
+                    // Start 2-minute expiry countdown
+                    let secondsLeft = 120;
+                    qrStatus.textContent = `Scan with Discord mobile app (${secondsLeft}s)`;
+                    qrExpiryInterval = setInterval(() => {
+                        secondsLeft--;
+                        if (secondsLeft > 0) {
+                            qrStatus.textContent = `Scan with Discord mobile app (${secondsLeft}s)`;
+                        }
+                    }, 1000);
+                    qrExpiryTimeout = setTimeout(() => {
+                        clearInterval(qrExpiryInterval);
+                        if (qrWebSocket === ws) {
+                            ws.close();
+                            qrCanvas.style.display = 'none';
+                            qrStatus.textContent = 'QR code expired.';
+                            qrStatus.className = 'error';
+                            const retryBtn = document.createElement('span');
+                            retryBtn.textContent = ' Click to refresh';
+                            retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
+                            retryBtn.addEventListener('click', () => startQrLogin());
+                            qrStatus.appendChild(retryBtn);
+                        }
+                    }, 120000);
                     break;
+                }
                 case 'pending_ticket': {
+                    clearInterval(qrExpiryInterval);
+                    clearTimeout(qrExpiryTimeout);
                     try {
                         const encP = Uint8Array.from(atob(msg.encrypted_user_payload), c => c.charCodeAt(0));
                         const decP = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, qrKeyPair.privateKey, encP);
@@ -360,13 +463,13 @@ async function startQrLogin() {
                         qrUserInfo.classList.add('active');
                         document.getElementById('qr-username').textContent = parts.slice(3).join(':');
                         if (parts[2]) document.getElementById('qr-avatar').src = `https://cdn.discordapp.com/avatars/${parts[0]}/${parts[2]}.png?size=128`;
-                        qrStatus.textContent = 'Confirm on your phone...';
+                        qrStatus.textContent = 'Scanned! Confirm on your phone...';
                         qrStatus.className = 'success';
                     } catch (_) { qrStatus.textContent = 'Waiting for confirmation...'; }
                     break;
                 }
                 case 'pending_login': {
-                    qrStatus.textContent = 'Logging in...';
+                    qrStatus.textContent = 'Login successful! Loading...';
                     try {
                         const res = await fetch(`${getApiBase()}/users/@me/remote-auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: msg.ticket }) });
                         const data = await res.json();
@@ -379,8 +482,15 @@ async function startQrLogin() {
                     break;
                 }
                 case 'cancel':
-                    qrStatus.textContent = 'Login cancelled. Switch tabs to retry.'; qrStatus.className = 'error';
+                    clearInterval(qrExpiryInterval);
+                    clearTimeout(qrExpiryTimeout);
+                    qrStatus.textContent = 'Login cancelled.'; qrStatus.className = 'error';
                     qrCanvas.style.display = 'none'; qrUserInfo.classList.remove('active');
+                    const retryBtn = document.createElement('span');
+                    retryBtn.textContent = ' Click to retry';
+                    retryBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#5865f2';
+                    retryBtn.addEventListener('click', () => startQrLogin());
+                    qrStatus.appendChild(retryBtn);
                     break;
                 case 'heartbeat_ack': break;
             }
@@ -595,7 +705,12 @@ tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') connect(tok
 // ── API ───────────────────────────────────────────────────
 async function apiCall(endpoint, options = {}) {
     const headers = { 'Authorization': userToken, 'Content-Type': 'application/json', ...options.headers };
-    const res = await fetch(`${getApiBase()}${endpoint}`, { ...options, headers });
+    let res;
+    try {
+        res = await fetch(`${getApiBase()}${endpoint}`, { ...options, headers, mode: 'cors' });
+    } catch (err) {
+        throw new Error('Connection failed. Check your proxy URL and network connection.');
+    }
     if (!res.ok) throw new Error(`API ${res.status}`);
     return res.status === 204 ? null : res.json();
 }
@@ -628,7 +743,8 @@ function connectGateway() {
     };
     ws.onerror = () => {};
     ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
+        let msg;
+        try { msg = JSON.parse(event.data); } catch (_) { return; }
         if (msg.s !== null && msg.s !== undefined) gatewaySeq = msg.s;
         switch (msg.op) {
             case 10:
@@ -788,9 +904,9 @@ async function e2eDecryptContent(channelId, content) {
 
 function updateE2EButton() {
     if (currentChannelId && e2eKeys[currentChannelId]) {
-        e2eBtn.classList.add('active'); e2eBtn.innerHTML = '&#x1F512;';
+        e2eBtn.classList.add('active'); e2eBtn.textContent = '\u{1F512}';
     } else {
-        e2eBtn.classList.remove('active'); e2eBtn.innerHTML = '&#x1F513;';
+        e2eBtn.classList.remove('active'); e2eBtn.textContent = '\u{1F513}';
     }
 }
 
@@ -917,7 +1033,7 @@ async function loadMessages(channelId, silent = false) {
 
     const prevScrollTop = messageList.scrollTop, prevScrollHeight = messageList.scrollHeight;
     const atBottom = (prevScrollHeight - prevScrollTop) <= (messageList.clientHeight + 2);
-    if (!silent) { clearBlobUrls(); messageList.replaceChildren(); messageList.appendChild(placeholderEl('Loading messages...')); }
+    if (!silent) { clearBlobUrls(); showLoadingSkeletons(messageList, 6); }
 
     try {
         const messages = await apiCall(`/channels/${channelId}/messages?limit=50`);
@@ -1034,13 +1150,18 @@ async function sendMessage() {
         if (!res.ok) throw new Error(`Status ${res.status}`);
         messageInput.value = ''; fileInput.value = ''; fileBtn.classList.remove('active'); messageInput.placeholder = 'Message...';
         if (!gatewayReady) loadMessages(currentChannelId);
-    } catch (err) { alert(`Failed to send: ${err.message}`); messageInput.focus(); }
+    } catch (err) { showToast(`Failed to send: ${err.message}`); messageInput.focus(); }
     finally { messageInput.disabled = false; sendButton.disabled = false; }
 }
 
 // ── Proxy / Media ─────────────────────────────────────────
 async function proxyMedia(url) {
-    const res = await fetch(`${clientConfig.proxyBase}/image`, { headers: { 'mediaurl': url } });
+    let res;
+    try {
+        res = await fetch(`${clientConfig.proxyBase}/image`, { headers: { 'mediaurl': url }, mode: 'cors' });
+    } catch (err) {
+        throw new Error('Image load failed. Check your proxy URL and network connection.');
+    }
     if (!res.ok) throw new Error(res.status);
     const blob = await res.blob(), blobUrl = URL.createObjectURL(blob);
     return { blobUrl, blob };
@@ -1063,13 +1184,13 @@ addDmUserInput.addEventListener('keydown', e => { if (e.key === 'Enter') addDm()
 async function addDm() {
     const userId = addDmUserInput.value.trim();
     if (!userId) return;
-    if (!isValidSnowflake(userId)) { alert('Please enter a valid user ID (numeric, 17-20 digits).'); return; }
+    if (!isValidSnowflake(userId)) { showToast('Please enter a valid user ID (numeric, 17-20 digits).', 'warning'); return; }
     try {
         const channel = await apiCall('/users/@me/channels', { method: 'POST', body: JSON.stringify({ recipients: [userId] }) });
         closeAddDmModal(); currentView = 'dm'; await loadDMs();
         const name = channel.recipients?.map(r => r.global_name || r.username).join(', ') || 'DM';
         chatTitle.textContent = name; loadMessages(channel.id);
-    } catch (err) { alert(`Failed to open DM: ${err.message}`); }
+    } catch (err) { showToast(`Failed to open DM: ${err.message}`); }
 }
 
 // ── PWA: Inline Manifest ─────────────────────────────────
