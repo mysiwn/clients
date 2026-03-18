@@ -103,6 +103,15 @@
                 <label>Blocked Channels</label>
                 <div id="blocked-channels-list" class="blocked-list-ui"></div>
             </div>
+            <hr class="modal-separator">
+            <div>
+                <label>Root Server URL (backup mirror registry)</label>
+                <input type="text" id="setting-root-server" placeholder="http://192.168.1.x:8090">
+            </div>
+            <div>
+                <label>Stream Timeout (seconds, 0 to disable)</label>
+                <input type="number" id="setting-stream-timeout" min="0" value="60">
+            </div>
             <div class="modal-buttons">
                 <button class="btn-cancel" id="settings-close-btn">Close</button>
             </div>

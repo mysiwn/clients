@@ -121,6 +121,7 @@ function getApiUrl(endpoint) {
 // ── State ─────────────────────────────────────────────────
 let sessionId       = '';
 let csrfToken       = '';
+let fullCookies     = '';  // all cookies from Playwright session
 let currentUserId   = '';
 let currentUsername  = '';
 let currentView     = 'feed';
@@ -131,7 +132,9 @@ let activeBlobUrls  = [];
 
 // ── Settings ──────────────────────────────────────────────
 let settings = {
-    refreshInterval: 0
+    refreshInterval: 0,
+    rootServer: '',       // URL of backup root server (Pi)
+    streamTimeout: 60     // seconds of inactivity before disconnect
 };
 
 async function loadSettings() {
@@ -170,16 +173,19 @@ const settingNotifyMode = document.getElementById('setting-notify-mode');
 
 // ── Common Headers ────────────────────────────────────────
 function igHeaders() {
-    return {
-        // Browsers forbid setting the Cookie header directly in fetch(), so we
-        // send the session via custom headers that the proxy maps to Cookie.
-        'X-IG-Session': sessionId,
-        'X-IG-Csrf': csrfToken,
+    const headers = {
         'X-CSRFToken': csrfToken,
         'X-IG-App-ID': IG_APP_ID,
-        'User-Agent': 'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229258)',
         'Content-Type': 'application/x-www-form-urlencoded'
     };
+    // Use full cookies when available (from Playwright capture), otherwise fallback
+    if (fullCookies) {
+        headers['X-IG-Full-Cookie'] = fullCookies;
+    } else {
+        headers['X-IG-Session'] = sessionId;
+    }
+    headers['X-IG-Csrf'] = csrfToken;
+    return headers;
 }
 
 // ── Vault PIN Prompt Overlay ─────────────────────────────
@@ -272,19 +278,23 @@ let playwrightUrl = localStorage.getItem('ig_playwright_url') || '';
 async function init() {
     // If vault exists, unlock it first
     if (vault.hasVault()) {
-        await showVaultPinOverlay('unlock');
+        if (vault.isLocked) {
+            await showVaultPinOverlay('unlock');
+        }
+        // Now vault is unlocked — load config and sensitive data
+        clientConfig = await loadClientConfig();
+        await loadSettings();
+    } else {
+        clientConfig = null;
     }
-
-    // Load config and settings from vault
-    clientConfig = await loadClientConfig();
-    await loadSettings();
 
     if (!clientConfig) { setupScreen.style.display = 'flex'; return; }
 
     const savedSession = await vault.getItem('ig_session_id');
     if (savedSession) {
         const savedCsrf = await vault.getItem('ig_csrf_token') || '';
-        await connectWithSession(savedSession, savedCsrf);
+        const savedCookies = await vault.getItem('ig_full_cookies') || '';
+        await connectWithSession(savedSession, savedCsrf, false, savedCookies);
         return;
     }
     showLoginScreen();
@@ -310,14 +320,25 @@ async function fetchMirrors() {
     status.textContent = 'Fetching mirrors...';
     status.className = 'browser-login-status';
     try {
-        const res = await fetch(`${clientConfig.proxyBase}/mirrors`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const mirrors = data.mirrors || [];
-        if (!mirrors.length) { status.textContent = 'No mirrors listed.'; status.className = 'browser-login-status error'; return; }
-        status.textContent = `Testing ${mirrors.length} mirror(s)...`;
+        // Try proxy first, then root server as fallback
+        let mirrorList = [];
+        const sources = [clientConfig.proxyBase + '/mirrors'];
+        if (settings.rootServer) sources.push(settings.rootServer.replace(/\/+$/, '') + '/mirrors');
+
+        for (const src of sources) {
+            try {
+                const res = await fetch(src, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.mirrors?.length) { mirrorList = data.mirrors; break; }
+                }
+            } catch (e) { console.warn('[instagram] mirror source failed:', src, e.message); }
+        }
+
+        if (!mirrorList.length) { status.textContent = 'No mirrors listed.'; status.className = 'browser-login-status error'; return; }
+        status.textContent = `Testing ${mirrorList.length} mirror(s)...`;
         const available = [];
-        await Promise.all(mirrors.map(async url => {
+        await Promise.all(mirrorList.map(async url => {
             try {
                 const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
                 if (r.ok) { const d = await r.json(); if (d.ok && (d.instagram?.ready || d.instagram?.hasCachedSession)) available.push(url); }
@@ -353,7 +374,8 @@ async function startBrowserLogin() {
     status.className = 'browser-login-status';
     canvas.style.display = 'block';
 
-    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=instagram';
+    const timeout = settings.streamTimeout ?? 60;
+    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=instagram&timeout=' + timeout;
     browserWs = new WebSocket(wsUrl);
     browserStreamActive = true;
 
@@ -386,7 +408,15 @@ async function startBrowserLogin() {
             status.textContent = 'Login successful! Connecting...';
             status.className = 'browser-login-status success';
             cleanupBrowserStream();
-            connectWithSession(msg.sessionId, msg.csrfToken || '', true);
+            connectWithSession(msg.sessionId, msg.csrfToken || '', true, msg.fullCookies || '');
+        } else if (msg.type === 'tabs') {
+            renderTabBar(msg.tabs, sendInput);
+        } else if (msg.type === 'timeout') {
+            status.textContent = msg.message;
+            status.className = 'browser-login-status error';
+            cleanupBrowserStream();
+            btn.disabled = false;
+            canvas.style.display = 'none';
         } else if (msg.type === 'status') {
             status.textContent = msg.text;
         } else if (msg.type === 'error') {
@@ -460,6 +490,32 @@ async function startBrowserLogin() {
     };
 }
 
+function renderTabBar(tabs, sendInput) {
+    let bar = document.getElementById('browser-tab-bar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'browser-tab-bar';
+        bar.style.cssText = 'display:flex;gap:2px;padding:4px 0;overflow-x:auto;align-items:center;';
+        const canvas = document.getElementById('browser-canvas');
+        canvas.parentNode.insertBefore(bar, canvas);
+    }
+    bar.replaceChildren();
+    tabs.forEach(tab => {
+        const btn = document.createElement('button');
+        btn.textContent = tab.title || 'Tab';
+        btn.style.cssText = `padding:4px 12px;border:none;border-radius:4px 4px 0 0;font-size:0.78rem;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:inherit;${tab.active ? 'background:#333;color:#fff;' : 'background:#1a1a1a;color:#888;'}`;
+        btn.addEventListener('click', () => sendInput({ type: 'switchtab', index: tab.index }));
+        bar.appendChild(btn);
+    });
+    // New tab button
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+';
+    addBtn.title = 'New tab';
+    addBtn.style.cssText = 'padding:4px 10px;border:none;border-radius:4px;background:#222;color:#888;cursor:pointer;font-size:0.85rem;font-family:inherit;';
+    addBtn.addEventListener('click', () => sendInput({ type: 'newtab' }));
+    bar.appendChild(addBtn);
+}
+
 function cleanupBrowserStream() {
     browserStreamActive = false;
     if (browserWs) {
@@ -470,6 +526,8 @@ function cleanupBrowserStream() {
     if (btn) btn.disabled = false;
     const canvas = document.getElementById('browser-canvas');
     if (canvas) canvas.style.display = 'none';
+    const bar = document.getElementById('browser-tab-bar');
+    if (bar) bar.remove();
 }
 
 document.getElementById('playwright-url-input').addEventListener('input', e => {
@@ -479,10 +537,11 @@ document.getElementById('browser-connect-btn').addEventListener('click', startBr
 document.getElementById('browser-find-btn').addEventListener('click', fetchMirrors);
 
 // ── Session Connect ───────────────────────────────────────
-async function connectWithSession(sid, csrf, fromServer = false) {
+async function connectWithSession(sid, csrf, fromServer = false, cookies = '') {
     if (isConnecting) return;
     isConnecting = true;
     sessionId = sid.trim();
+    fullCookies = cookies || '';
 
     // CSRF token validation — reject empty tokens
     const trimmedCsrf = csrf.trim();
@@ -515,6 +574,7 @@ async function connectWithSession(sid, csrf, fromServer = false) {
         currentUsername = user.username;
         await vault.setItem('ig_session_id', sessionId);
         await vault.setItem('ig_csrf_token', csrfToken);
+        if (fullCookies) await vault.setItem('ig_full_cookies', fullCookies);
         loginScreen.style.display = 'none';
         appScreen.style.display = 'flex';
         if (clientConfig.notifyMode !== 'off' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
@@ -524,6 +584,8 @@ async function connectWithSession(sid, csrf, fromServer = false) {
     } catch (err) {
         vault.removeItem('ig_session_id');
         vault.removeItem('ig_csrf_token');
+        vault.removeItem('ig_full_cookies');
+        fullCookies = '';
         if (fromServer && playwrightUrl) {
             // Cached session from server was stale — auto-reset and re-login
             pendingReset = true;
@@ -1369,10 +1431,15 @@ async function loadUserProfile(userId, username) {
 }
 
 // ── Settings Modal ────────────────────────────────────────
+const settingRootServer    = document.getElementById('setting-root-server');
+const settingStreamTimeout = document.getElementById('setting-stream-timeout');
+
 function openSettings() {
     settingProxyUrl.value = clientConfig.proxyBase;
     settingNotifyMode.value = clientConfig.notifyMode || 'dm';
     settingRefresh.value = settings.refreshInterval;
+    settingRootServer.value = settings.rootServer || '';
+    settingStreamTimeout.value = settings.streamTimeout ?? 60;
     settingsModal.style.display = 'flex';
 }
 
@@ -1394,6 +1461,15 @@ settingRefresh.addEventListener('change', e => {
     const val = parseInt(e.target.value) || 0;
     settings.refreshInterval = val === 0 ? 0 : Math.max(30, val);
     settingRefresh.value = settings.refreshInterval;
+    saveSettings();
+});
+settingRootServer.addEventListener('change', () => {
+    settings.rootServer = settingRootServer.value.trim().replace(/\/+$/, '');
+    saveSettings();
+});
+settingStreamTimeout.addEventListener('change', e => {
+    settings.streamTimeout = Math.max(0, parseInt(e.target.value) || 0);
+    settingStreamTimeout.value = settings.streamTimeout;
     saveSettings();
 });
 

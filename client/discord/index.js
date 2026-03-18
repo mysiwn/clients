@@ -232,7 +232,9 @@ let settings = {
     refreshInterval: 0,
     blockedUsers:    [],
     blockedServers:  [],
-    blockedChannels: []
+    blockedChannels: [],
+    rootServer: '',       // URL of backup root server (Pi)
+    streamTimeout: 60     // seconds of inactivity before disconnect
 };
 
 async function loadSettings() {
@@ -377,22 +379,31 @@ async function fetchMirrors() {
     status.textContent = 'Fetching mirrors...';
     status.className = 'browser-login-status';
     try {
-        const res = await fetch(`${clientConfig.proxyBase}/mirrors`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const mirrors = data.mirrors || [];
-        if (!mirrors.length) { status.textContent = 'No mirrors listed.'; status.className = 'browser-login-status error'; return; }
-        // Test each mirror
-        status.textContent = `Testing ${mirrors.length} mirror(s)...`;
+        // Try proxy first, then root server as fallback
+        let mirrorList = [];
+        const sources = [clientConfig.proxyBase + '/mirrors'];
+        if (settings.rootServer) sources.push(settings.rootServer.replace(/\/+$/, '') + '/mirrors');
+
+        for (const src of sources) {
+            try {
+                const res = await fetch(src, { signal: AbortSignal.timeout(5000) });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.mirrors?.length) { mirrorList = data.mirrors; break; }
+                }
+            } catch (e) { console.warn('[discord] mirror source failed:', src, e.message); }
+        }
+
+        if (!mirrorList.length) { status.textContent = 'No mirrors listed.'; status.className = 'browser-login-status error'; return; }
+        status.textContent = `Testing ${mirrorList.length} mirror(s)...`;
         const available = [];
-        await Promise.all(mirrors.map(async url => {
+        await Promise.all(mirrorList.map(async url => {
             try {
                 const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
                 if (r.ok) { const d = await r.json(); if (d.ok && (d.discord?.ready || d.discord?.hasCachedToken)) available.push(url); }
             } catch (e) { console.warn('[discord] mirror test failed:', e); }
         }));
         if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }
-        // Populate dropdown
         const sel = document.getElementById('playwright-url-input');
         sel.value = available[0];
         playwrightUrl = available[0];
@@ -424,7 +435,8 @@ async function startBrowserLogin() {
     status.className = 'browser-login-status';
     canvas.style.display = 'block';
 
-    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=discord';
+    const timeout = settings.streamTimeout ?? 60;
+    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=discord&timeout=' + timeout;
     browserWs = new WebSocket(wsUrl);
     browserStreamActive = true;
 
@@ -450,6 +462,14 @@ async function startBrowserLogin() {
             status.className = 'browser-login-status success';
             cleanupBrowserStream();
             connect(msg.token);
+        } else if (msg.type === 'tabs') {
+            renderTabBar(msg.tabs, sendInput);
+        } else if (msg.type === 'timeout') {
+            status.textContent = msg.message;
+            status.className = 'browser-login-status error';
+            cleanupBrowserStream();
+            btn.disabled = false;
+            canvas.style.display = 'none';
         } else if (msg.type === 'status') {
             status.textContent = msg.text;
         } else if (msg.type === 'error') {
@@ -488,9 +508,36 @@ async function startBrowserLogin() {
     canvas.onkeyup   = (e) => { e.preventDefault(); sendInput({ type: 'keyup', key: e.key }); };
 }
 
+function renderTabBar(tabs, sendInput) {
+    let bar = document.getElementById('browser-tab-bar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'browser-tab-bar';
+        bar.style.cssText = 'display:flex;gap:2px;padding:4px 0;overflow-x:auto;align-items:center;';
+        const canvas = document.getElementById('browser-canvas');
+        canvas.parentNode.insertBefore(bar, canvas);
+    }
+    bar.replaceChildren();
+    tabs.forEach(tab => {
+        const btn = document.createElement('button');
+        btn.textContent = tab.title || 'Tab';
+        btn.style.cssText = `padding:4px 12px;border:none;border-radius:4px 4px 0 0;font-size:0.78rem;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:inherit;${tab.active ? 'background:#40444b;color:#fff;' : 'background:#2f3136;color:#72767d;'}`;
+        btn.addEventListener('click', () => sendInput({ type: 'switchtab', index: tab.index }));
+        bar.appendChild(btn);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+';
+    addBtn.title = 'New tab';
+    addBtn.style.cssText = 'padding:4px 10px;border:none;border-radius:4px;background:#2f3136;color:#72767d;cursor:pointer;font-size:0.85rem;font-family:inherit;';
+    addBtn.addEventListener('click', () => sendInput({ type: 'newtab' }));
+    bar.appendChild(addBtn);
+}
+
 function cleanupBrowserStream() {
     browserStreamActive = false;
     if (browserWs) { try { browserWs.close(); } catch (e) { console.warn('[discord] cleanupBrowserStream:', e); } browserWs = null; }
+    const bar = document.getElementById('browser-tab-bar');
+    if (bar) bar.remove();
 }
 
 document.getElementById('playwright-url-input').addEventListener('input', e => {
@@ -519,10 +566,15 @@ function renderBlockedList(containerId, list, typeKey) {
     });
 }
 
+const settingRootServer    = document.getElementById('setting-root-server');
+const settingStreamTimeout = document.getElementById('setting-stream-timeout');
+
 function openSettings() {
     settingProxyUrl.value = clientConfig.proxyBase;
     settingNotifyMode.value = clientConfig.notifyMode || 'dm_mentions';
     settingRefresh.value = settings.refreshInterval;
+    settingRootServer.value = settings.rootServer || '';
+    settingStreamTimeout.value = settings.streamTimeout ?? 60;
     renderBlockedList('blocked-users-list', settings.blockedUsers, 'blockedUsers');
     renderBlockedList('blocked-servers-list', settings.blockedServers, 'blockedServers');
     renderBlockedList('blocked-channels-list', settings.blockedChannels, 'blockedChannels');
@@ -546,6 +598,15 @@ settingRefresh.addEventListener('change', e => {
     const val = parseInt(e.target.value) || 0;
     settings.refreshInterval = val === 0 ? 0 : Math.max(5, val);
     settingRefresh.value = settings.refreshInterval;
+    saveSettings();
+});
+settingRootServer.addEventListener('change', () => {
+    settings.rootServer = settingRootServer.value.trim().replace(/\/+$/, '');
+    saveSettings();
+});
+settingStreamTimeout.addEventListener('change', e => {
+    settings.streamTimeout = Math.max(0, parseInt(e.target.value) || 0);
+    settingStreamTimeout.value = settings.streamTimeout;
     saveSettings();
 });
 
