@@ -369,7 +369,7 @@ async function startBrowserLogin() {
     btn.style.display = 'none';
     canvas.style.display = 'block';
 
-    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream/discord';
+    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream?type=discord';
     browserWs = new WebSocket(wsUrl);
     browserStreamActive = true;
 

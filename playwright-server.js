@@ -3,14 +3,14 @@
 // playwright-server.js — Discord + Instagram login server
 //
 // Runs both services simultaneously. Each gets its own
-// browser instance and WebSocket path.
+// browser instance. Clients connect via query param:
 //
 // Usage:
 //   node playwright-server.js
 //
-// WebSocket paths:
-//   ws://localhost:3000/stream/discord
-//   ws://localhost:3000/stream/instagram
+// WebSocket:
+//   ws://localhost:3000/stream?type=discord
+//   ws://localhost:3000/stream?type=instagram
 //
 // Expose with Cloudflare Tunnel:
 //   cloudflared tunnel --url http://localhost:3000
@@ -98,15 +98,15 @@ const server = http.createServer((req, res) => {
 });
 
 // ── WebSocket Server ──────────────────────────────────────
-// Routes by URL path: /stream/discord or /stream/instagram
+// Connect to /stream?type=discord or /stream?type=instagram
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
-    const svcName = req.url === '/stream/instagram' ? 'instagram'
-                  : req.url === '/stream/discord'   ? 'discord'
-                  : null;
+    const parsed = new URL(req.url, 'http://localhost');
+    const isStream = parsed.pathname === '/stream' || parsed.pathname === '/stream/';
+    const svcName = isStream ? (parsed.searchParams.get('type') || '').toLowerCase() : '';
 
-    if (!svcName) { ws.close(1008, 'Invalid path'); return; }
+    if (!SVC[svcName]) { ws.close(1008, 'Invalid type — use ?type=discord or ?type=instagram'); return; }
 
     const svc = SVC[svcName];
 
@@ -297,8 +297,8 @@ async function closeBrowser(svc, svcName) {
 // ── Start ─────────────────────────────────────────────────
 server.listen(PORT, async () => {
     console.log(`\nPlaywright streaming server on port ${PORT}`);
-    console.log(`  Discord   → ws://localhost:${PORT}/stream/discord`);
-    console.log(`  Instagram → ws://localhost:${PORT}/stream/instagram`);
+    console.log(`  Discord   → ws://localhost:${PORT}/stream?type=discord`);
+    console.log(`  Instagram → ws://localhost:${PORT}/stream?type=instagram`);
     console.log(`  Status    → http://localhost:${PORT}/status`);
     console.log(`\nExpose with: cloudflared tunnel --url http://localhost:${PORT}\n`);
 
