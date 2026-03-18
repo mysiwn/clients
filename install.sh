@@ -63,15 +63,15 @@ echo "[*] Installing Chromium browser..."
 npx playwright install chromium 2>&1 | tail -5
 echo "[OK] Chromium installed"
 
-# ── 4. Install cloudflared ────────────────────────────────
-install_cloudflared() {
+# ── 4. Install ngrok ──────────────────────────────────────
+install_ngrok() {
     echo ""
-    if command -v cloudflared &>/dev/null; then
-        echo "[OK] cloudflared already installed ($(cloudflared --version 2>&1 | head -1))"
+    if command -v ngrok &>/dev/null; then
+        echo "[OK] ngrok already installed ($(ngrok version 2>&1 | head -1))"
         return 0
     fi
 
-    echo "[*] Installing cloudflared (Cloudflare Tunnel)..."
+    echo "[*] Installing ngrok..."
 
     ARCH=$(uname -m)
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -83,34 +83,22 @@ install_cloudflared() {
         *) echo "[!] Unsupported architecture: $ARCH"; exit 1 ;;
     esac
 
-    if [ "$OS" = "linux" ]; then
-        CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}"
-        curl -sL "$CF_URL" -o /usr/local/bin/cloudflared 2>/dev/null || \
-        curl -sL "$CF_URL" -o "$HOME/.local/bin/cloudflared" && mkdir -p "$HOME/.local/bin"
-        chmod +x /usr/local/bin/cloudflared 2>/dev/null || chmod +x "$HOME/.local/bin/cloudflared"
-        export PATH="$HOME/.local/bin:$PATH"
-    elif [ "$OS" = "darwin" ]; then
-        if command -v brew &>/dev/null; then
-            brew install cloudflared
-        else
-            CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${ARCH}.tgz"
-            curl -sL "$CF_URL" | tar xz -C /usr/local/bin/
-        fi
-    else
-        echo "[!] Unsupported OS: $OS"
-        echo "    Install cloudflared manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-        return 1
-    fi
+    NGROK_URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-${OS}-${ARCH}.tgz"
+    curl -sL "$NGROK_URL" | tar xz -C /usr/local/bin/ 2>/dev/null || \
+    ( mkdir -p "$HOME/.local/bin" && curl -sL "$NGROK_URL" | tar xz -C "$HOME/.local/bin/" && export PATH="$HOME/.local/bin:$PATH" )
 
-    if command -v cloudflared &>/dev/null; then
-        echo "[OK] cloudflared installed"
+    if command -v ngrok &>/dev/null; then
+        echo "[OK] ngrok installed"
+        echo ""
+        echo "    IMPORTANT: ngrok requires a free auth token."
+        echo "    Sign up at https://ngrok.com and run:"
+        echo "      ngrok config add-authtoken <your-token>"
     else
-        echo "[!] cloudflared installation failed — install manually"
-        echo "    https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+        echo "[!] ngrok installation failed — install manually from https://ngrok.com/download"
     fi
 }
 
-install_cloudflared
+install_ngrok
 
 # ── 5. Save credentials to config.json ───────────────────
 echo ""
@@ -150,7 +138,7 @@ cat > "$SCRIPT_DIR/start.sh" << 'STARTEOF'
 #!/bin/bash
 # ══════════════════════════════════════════════════════════
 # start.sh — Start Playwright server (Discord + Instagram)
-#            + Cloudflare Tunnel
+#            + ngrok tunnel
 #
 # Usage: bash start.sh
 # ══════════════════════════════════════════════════════════
@@ -166,8 +154,7 @@ cleanup() {
     echo ""
     echo "Shutting down..."
     [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null
-    [ -n "$CF_PID" ] && kill $CF_PID 2>/dev/null
-    rm -f /tmp/cf-tunnel-$$.log
+    [ -n "$NGROK_PID" ] && kill $NGROK_PID 2>/dev/null
     exit 0
 }
 trap cleanup SIGINT SIGTERM
@@ -184,15 +171,18 @@ if ! kill -0 $SERVER_PID 2>/dev/null; then
     exit 1
 fi
 
-echo "Starting Cloudflare Tunnel..."
-cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | tee /tmp/cf-tunnel-$$.log &
-CF_PID=$!
+echo "Starting ngrok tunnel..."
+ngrok http "$PORT" --log=stdout --log-format=json > /tmp/ngrok-$$.log 2>&1 &
+NGROK_PID=$!
 
-# Wait for tunnel URL to appear
-for i in $(seq 1 15); do
-    TUNNEL_URL=$(grep -o 'https://[^ ]*trycloudflare.com' /tmp/cf-tunnel-$$.log 2>/dev/null | head -1)
-    if [ -n "$TUNNEL_URL" ]; then break; fi
+# Wait for tunnel URL via ngrok local API
+TUNNEL_URL=""
+for i in $(seq 1 20); do
     sleep 1
+    TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
+        | grep -o '"public_url":"https://[^"]*"' | head -1 \
+        | sed 's/"public_url":"//;s/"//')
+    [ -n "$TUNNEL_URL" ] && break
 done
 
 echo ""
@@ -206,7 +196,8 @@ echo "║                                                          ║"
 echo "║  Add this base URL to PLAYWRIGHT_MIRRORS in             "
 echo "║  index.js (Discord) and insta/index.js (Instagram)      "
 else
-echo "║  Tunnel URL not detected yet — check the logs above      ║"
+echo "║  Tunnel URL not detected — check ngrok is authenticated  ║"
+echo "║  Run: ngrok config add-authtoken <your-token>            ║"
 fi
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
@@ -229,7 +220,7 @@ echo "║  Start both servers:                                     ║"
 echo "║    bash start.sh                                         ║"
 echo "║                                                          ║"
 echo "║  Both Discord and Instagram run simultaneously.          ║"
-echo "║  The script prints a trycloudflare.com URL.              ║"
+echo "║  The script prints an ngrok URL.                         ║"
 echo "║  Add it to PLAYWRIGHT_MIRRORS in index.js + insta/index.js║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
