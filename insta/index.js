@@ -256,7 +256,7 @@ async function findActiveMirror() {
             const res = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
             if (res.ok) {
                 const data = await res.json();
-                if (data.service === 'instagram') return url;
+                if (data.ok && data.instagram) return url;
             }
         } catch (_) {}
     }
@@ -295,7 +295,7 @@ async function startBrowserLogin() {
     btn.style.display = 'none';
     canvas.style.display = 'block';
 
-    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream';
+    const wsUrl = mirror.replace(/^http/, 'ws') + '/stream/instagram';
     browserWs = new WebSocket(wsUrl);
     browserStreamActive = true;
 
