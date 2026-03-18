@@ -265,8 +265,28 @@ document.getElementById('setup-save-btn').addEventListener('click', () => {
 
 // ── Init Flow ─────────────────────────────────────────────
 function init() {
+    // Check for token injected via URL hash by playwright-login.js
+    // Hash fragment is never sent to any server — stays client-side only
+    const hashToken = getHashParam('pl_token');
+    if (hashToken) {
+        // Clear hash immediately so token isn't visible in address bar
+        history.replaceState(null, '', location.pathname + location.search);
+        // Ensure config exists before connecting
+        if (!clientConfig) {
+            saveClientConfig({ ...DEFAULT_CONFIG });
+        }
+        showLoginScreen();
+        connect(hashToken);
+        return;
+    }
     if (!clientConfig) { setupScreen.style.display = 'flex'; }
     else { showLoginScreen(); }
+}
+
+function getHashParam(key) {
+    const hash = location.hash.slice(1); // remove leading #
+    const params = new URLSearchParams(hash);
+    return params.get(key) || null;
 }
 
 function showLoginScreen() {

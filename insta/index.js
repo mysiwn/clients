@@ -191,7 +191,27 @@ document.getElementById('setup-save-btn').addEventListener('click', () => {
 });
 
 // ── Init Flow ─────────────────────────────────────────────
+function getHashParam(key) {
+    const hash = location.hash.slice(1);
+    const params = new URLSearchParams(hash);
+    return params.get(key) || null;
+}
+
 function init() {
+    // Check for session injected via URL hash by playwright-login.js
+    // Hash fragment is never sent to any server — stays client-side only
+    const hashSession = getHashParam('pl_session');
+    if (hashSession) {
+        const hashCsrf = getHashParam('pl_csrf') || '';
+        // Clear hash immediately so token isn't visible in address bar
+        history.replaceState(null, '', location.pathname + location.search);
+        if (!clientConfig) {
+            saveClientConfig({ ...DEFAULT_CONFIG });
+        }
+        showLoginScreen();
+        connectWithSession(hashSession, hashCsrf);
+        return;
+    }
     if (!clientConfig) { setupScreen.style.display = 'flex'; }
     else { showLoginScreen(); }
 }
