@@ -64,13 +64,13 @@ fi
 # ── 2. npm install ────────────────────────────────────────
 echo ""
 echo "[*] Installing npm dependencies..."
-npm install --production 2>&1 | tail -3
+(cd "$SCRIPT_DIR/server" && npm install --production 2>&1 | tail -3)
 echo "[OK] Dependencies installed"
 
 # ── 3. Install Chromium via Playwright ────────────────────
 echo ""
 echo "[*] Installing Chromium browser..."
-npx playwright install chromium 2>&1 | tail -5
+(cd "$SCRIPT_DIR/server" && npx playwright install chromium 2>&1 | tail -5)
 echo "[OK] Chromium installed"
 
 # ── 4. Check/install ngrok ────────────────────────────────
@@ -154,7 +154,7 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-node playwright-server.js &
+node server/playwright-server.js &
 SERVER_PID=$!
 
 sleep 2
