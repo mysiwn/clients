@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Discord Client">
+    <meta name="theme-color" content="#36393f">
+    <meta name="application-name" content="Discord Client">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https: wss:; img-src 'self' blob: data: https://cdn.jsdelivr.net; font-src 'self'; manifest-src blob:; worker-src blob:;">
+    <title>Local Discord Client</title>
+    <script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous" integrity="sha384-Fal8sW9VBc+7VZvhIbOqWfzQnJTO+KzSlPdretEPc3iJq4lZ5ADywx29gFOBRWVK"></script>
+    <link rel="stylesheet" href="index.css">
+    <noscript><style>body{display:flex;justify-content:center;align-items:center;height:100vh;background:#2f3136;color:#fff;font-family:sans-serif}body::after{content:'JavaScript is required to use this client.'}</style></noscript>
+</head>
+
+<body>
+
+    <!-- ── Setup Screen ─────────────────────────────────── -->
+    <div id="setup-screen">
+        <div class="login-box">
+            <h2>Setup</h2>
+            <p>Configure your client before first use.</p>
+            <div class="setup-field">
+                <label>CORS Proxy URL</label>
+                <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
+            </div>
+            <div class="setup-field">
+                <label>Vault PIN (encrypts all stored data)</label>
+                <input type="password" class="login-input" id="setup-pin" placeholder="Enter a PIN (4+ characters)" minlength="4" autocomplete="new-password">
+            </div>
+            <div class="setup-field">
+                <label>Notifications</label>
+                <select id="setup-notify-mode">
+                    <option value="dm_mentions">DMs + Mentions</option>
+                    <option value="all">All unread messages</option>
+                    <option value="dm_only">DMs only</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <button id="setup-save-btn" style="width:100%">Save & Continue</button>
+        </div>
+    </div>
+
+    <!-- ── Login Screen ─────────────────────────────────── -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>Local Client</h2>
+            <p>Sign in to Discord.</p>
+            <a href="../faq.html" style="font-size:0.78rem;color:#667eea;text-decoration:none;margin-top:-4px" target="_blank" rel="noopener">FAQ &amp; Security Info</a>
+
+            <div id="browser-login-container" style="width:100%">
+                <div id="browser-status" class="browser-login-status">Enter a server URL or find a mirror.</div>
+                <input type="text" class="login-input" id="playwright-url-input" placeholder="https://xxxx.ngrok-free.app" style="margin-top:8px">
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button id="browser-connect-btn" style="flex:1">Connect</button>
+                    <button id="browser-find-btn" style="flex:1;background:#4f545c">Find a Mirror</button>
+                </div>
+                <canvas id="browser-canvas" class="browser-canvas" style="display:none;margin-top:12px"></canvas>
+            </div>
+
+            <div class="notice">
+                Requests route through an encrypted CORS proxy.
+            </div>
+            <div id="login-error" style="color:#ed4245;font-size:0.85rem;display:none"></div>
+        </div>
+    </div>
+
+    <!-- ── Settings Modal ───────────────────────────────── -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>Settings</h3>
+            <div>
+                <label>Proxy URL</label>
+                <input type="text" id="setting-proxy-url">
+            </div>
+            <div>
+                <label>Notifications</label>
+                <select id="setting-notify-mode">
+                    <option value="dm_mentions">DMs + Mentions</option>
+                    <option value="all">All unread messages</option>
+                    <option value="dm_only">DMs only</option>
+                    <option value="off">Off</option>
+                </select>
+            </div>
+            <hr class="modal-separator">
+            <div>
+                <label>Auto-Refresh Interval (seconds, 0 to disable)</label>
+                <input type="number" id="setting-refresh" min="5" value="0">
+            </div>
+            <div>
+                <label>Blocked Users</label>
+                <div id="blocked-users-list" class="blocked-list-ui"></div>
+            </div>
+            <div>
+                <label>Blocked Servers</label>
+                <div id="blocked-servers-list" class="blocked-list-ui"></div>
+            </div>
+            <div>
+                <label>Blocked Channels</label>
+                <div id="blocked-channels-list" class="blocked-list-ui"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="settings-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add DM Modal ─────────────────────────────────── -->
+    <div id="add-dm-modal" class="modal-overlay">
+        <div class="modal">
+            <h3>Open DM</h3>
+            <div>
+                <label>User ID</label>
+                <input type="text" id="add-dm-user-id" placeholder="Enter a user ID (numeric)">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="add-dm-cancel-btn">Cancel</button>
+                <button id="add-dm-submit">Open</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Context Menu ─────────────────────────────────── -->
+    <div id="context-menu" class="context-menu" style="display:none">
+        <div id="block-action" class="context-item">Block</div>
+    </div>
+
+    <!-- ── App ──────────────────────────────────────────── -->
+    <div id="app">
+        <div class="sidebar">
+            <div class="guilds" id="guild-list"></div>
+            <div class="resizer-y" id="resizer"></div>
+            <div class="channels" id="channel-list"></div>
+        </div>
+        <div class="main">
+            <div class="header" id="chat-header">
+                <span id="chat-title">Select a channel</span>
+                <div class="gateway-status disconnected" id="gateway-status">
+                    <span class="gateway-status-tooltip" id="gateway-status-tooltip">Disconnected</span>
+                </div>
+                <button class="settings-btn" id="settings-open-btn">Settings</button>
+            </div>
+            <div class="messages" id="message-list"></div>
+            <div id="typing-indicator"></div>
+            <div class="input-area" style="position:relative">
+                <input type="file" id="file-input" style="display:none">
+                <label for="file-input" class="file-upload-btn" id="file-btn" style="pointer-events:none;opacity:0.4">+</label>
+                <button class="e2e-btn" id="e2e-btn" title="Encryption">&#x1F513;</button>
+                <div class="e2e-popover" id="e2e-popover">
+                    <label>Channel Encryption</label>
+                    <input type="password" id="e2e-passphrase" placeholder="Shared passphrase">
+                    <div class="e2e-popover-btns">
+                        <button id="e2e-save-btn">Set Key</button>
+                        <button class="btn-clear" id="e2e-clear-btn">Clear</button>
+                    </div>
+                </div>
+                <input type="text" id="message-input" placeholder="Message..." disabled>
+                <button id="send-button" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../shared/security.js"></script>
+    <script src="index.js"></script>
+</body>
+
+</html>
