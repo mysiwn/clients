@@ -12,18 +12,8 @@ const DM_PAGE_SIZE = 20;
 const vault = new SecureStorage('instagram');
 
 // ── Helpers ───────────────────────────────────────────────
-function escapeHtml(str) {
-    return (str || '').replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-    }[c]));
-}
-
-function isValidHttpsUrl(str) {
-    try {
-        const u = new URL(str);
-        return u.protocol === 'https:';
-    } catch { return false; }
-}
+function escapeHtml(str) { return InputValidator.escapeHtml(str); }
+function isValidHttpsUrl(str) { return InputValidator.isValidHttpsUrl(str); }
 
 function showLoadingSkeletons(container, count = 3, type = 'post') {
     container.replaceChildren();
@@ -100,7 +90,9 @@ const VALID_NOTIFY_MODES = ['dm', 'all', 'off'];
 
 async function loadClientConfig() {
     try {
-        const saved = JSON.parse(await vault.getItem('ig_client_config'));
+        const raw = await vault.getItem('ig_client_config');
+        if (!raw) return null;
+        const saved = JSON.parse(raw);
         if (saved && typeof saved === 'object') {
             const cfg = { ...DEFAULT_CONFIG, ...saved };
             if (!isValidHttpsUrl(cfg.proxyBase)) return null;
@@ -144,7 +136,9 @@ let settings = {
 
 async function loadSettings() {
     try {
-        const saved = JSON.parse(await vault.getItem('ig_settings'));
+        const raw = await vault.getItem('ig_settings');
+        if (!raw) return;
+        const saved = JSON.parse(raw);
         if (saved && typeof saved === 'object') settings = { ...settings, ...saved };
     } catch (e) { console.warn('[instagram]', e); }
 }
@@ -627,7 +621,7 @@ function loadProxiedImage(imgEl, url) {
         imgEl.src = blobUrl;
         imgEl.onload = () => { /* loaded successfully */ };
         imgEl.onerror = () => {
-            const idx = activeBlobUrls.indexOf(imgEl.src);
+            const idx = activeBlobUrls.indexOf(blobUrl);
             if (idx > -1) { URL.revokeObjectURL(activeBlobUrls[idx]); activeBlobUrls.splice(idx, 1); }
             imgEl.src = url; // fallback to direct URL
         };
@@ -952,6 +946,7 @@ async function loadThread(threadId, silent = false) {
 
     try {
         const data = await igApi(`/direct_v2/threads/${threadId}/?visual_message_return_type=unseen&limit=30`);
+        if (currentThreadId !== threadId) return; // stale response, user navigated away
         const thread = data.thread;
         if (!thread) throw new Error('No thread data');
 

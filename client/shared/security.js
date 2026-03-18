@@ -80,15 +80,13 @@ class SecureStorage {
         const saltB64 = btoa(String.fromCharCode(...salt));
         this.masterKey = await this._deriveKey(pin, salt);
 
-        // Store a verification token so we can check PIN correctness on unlock
-        const verifyToken = crypto.getRandomValues(new Uint8Array(16));
-        const verifyB64 = btoa(String.fromCharCode(...verifyToken));
-        const encryptedVerify = await this._encrypt(this.masterKey, verifyB64);
+        // Store encrypted well-known constant for PIN verification on unlock
+        const VERIFY_PLAINTEXT = 'vault-pin-check-v1';
+        const encryptedVerify = await this._encrypt(this.masterKey, VERIFY_PLAINTEXT);
 
         localStorage.setItem(this.namespace + '_' + VAULT_META_KEY, JSON.stringify({
             salt: saltB64,
             verify: encryptedVerify,
-            verifyPlain: verifyB64,
             createdAt: Date.now()
         }));
 
@@ -107,9 +105,18 @@ class SecureStorage {
         // Verify PIN by decrypting the verification token
         try {
             const decrypted = await this._decrypt(key, meta.verify);
-            if (decrypted !== meta.verifyPlain) throw new Error('PIN incorrect.');
+            const expected = meta.verifyPlain || 'vault-pin-check-v1';
+            if (decrypted !== expected) throw new Error('PIN incorrect.');
         } catch {
             throw new Error('Invalid PIN.');
+        }
+
+        // Migrate old vaults: remove plaintext verifyPlain, re-encrypt with constant
+        if (meta.verifyPlain) {
+            const newVerify = await this._encrypt(key, 'vault-pin-check-v1');
+            delete meta.verifyPlain;
+            meta.verify = newVerify;
+            localStorage.setItem(this.namespace + '_' + VAULT_META_KEY, JSON.stringify(meta));
         }
 
         this.masterKey = key;
@@ -145,9 +152,8 @@ class SecureStorage {
         if (!encrypted) return null;
         try {
             return await this._decrypt(this.masterKey, encrypted);
-        } catch {
-            console.warn(`[SecureStorage] Failed to decrypt key: ${key}`);
-            return null;
+        } catch (err) {
+            throw new Error(`Decryption failed for key "${key}": data may be corrupted`);
         }
     }
 

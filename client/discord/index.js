@@ -67,14 +67,14 @@ function openLightbox(src) {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'lightbox-close';
     closeBtn.textContent = '\u00D7';
-    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); overlay.remove(); });
-    overlay.addEventListener('click', () => overlay.remove());
+    function closeLightbox() { overlay.remove(); document.removeEventListener('keydown', handler); }
+    function handler(e) { if (e.key === 'Escape') closeLightbox(); }
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); closeLightbox(); });
+    overlay.addEventListener('click', () => closeLightbox());
     img.addEventListener('click', (e) => e.stopPropagation());
     overlay.append(img, closeBtn);
     document.body.appendChild(overlay);
-    document.addEventListener('keydown', function handler(e) {
-        if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); }
-    });
+    document.addEventListener('keydown', handler);
 }
 
 function makeItem(className, text, onclick) {
@@ -136,6 +136,7 @@ async function saveClientConfig(cfg) {
 let clientConfig = null;
 
 function getApiBase() {
+    if (!clientConfig) throw new Error('Client config not loaded — complete setup first');
     return clientConfig.proxyBase + '/https://discord.com/api/v9';
 }
 
@@ -143,6 +144,7 @@ function getApiBase() {
 let userToken        = '';
 let currentUserId    = '';
 let currentChannelId = null;
+let isSending        = false;
 let refreshTimeout   = null;
 let isConnecting     = false;
 let currentView      = 'dm';
@@ -1085,10 +1087,12 @@ sendButton.addEventListener('click', sendMessage);
 messageInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
 async function sendMessage() {
+    if (isSending) return;
     let content = messageInput.value.trim();
     const hasFiles = fileInput.files.length > 0;
     if (!content && !hasFiles) return;
     if (!currentChannelId) return;
+    isSending = true;
 
     // Validate file upload before sending
     if (hasFiles) {
@@ -1121,7 +1125,7 @@ async function sendMessage() {
         showToast(`Failed to send: ${err.message}`);
         messageInput.focus();
     }
-    finally { messageInput.disabled = false; sendButton.disabled = false; }
+    finally { isSending = false; messageInput.disabled = false; sendButton.disabled = false; }
 }
 
 // ── Proxy / Media ─────────────────────────────────────────

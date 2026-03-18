@@ -113,13 +113,13 @@ function checkRateLimit(ip, bucket) {
         rateLimitMap.delete(k);
       }
     }
-    // If still over cap, remove oldest entries
+    // If still over cap, evict oldest entry (O(n) single pass)
     if (rateLimitMap.size > RATE_LIMIT_MAP_CAP) {
-      const entries = [...rateLimitMap.entries()].sort((a, b) => a[1].windowStart - b[1].windowStart);
-      const toRemove = entries.slice(0, entries.length - RATE_LIMIT_MAP_CAP);
-      for (const [k] of toRemove) {
-        rateLimitMap.delete(k);
+      let oldestTime = Infinity, oldestKey = null;
+      for (const [k, v] of rateLimitMap) {
+        if (v.windowStart < oldestTime) { oldestTime = v.windowStart; oldestKey = k; }
       }
+      if (oldestKey) rateLimitMap.delete(oldestKey);
     }
   }
   return 0;
@@ -171,8 +171,15 @@ function cleanSharedSecretCache() {
   }
 }
 
+let lastCacheClean = 0;
+const CACHE_CLEAN_INTERVAL = 30000; // 30s
+
 function getCachedSharedSecret(cacheKey) {
-  cleanSharedSecretCache();
+  const now = Date.now();
+  if (now - lastCacheClean > CACHE_CLEAN_INTERVAL) {
+    lastCacheClean = now;
+    cleanSharedSecretCache();
+  }
   const entry = sharedSecretCache.get(cacheKey);
   if (entry && (Date.now() - entry.timestamp <= SHARED_SECRET_TTL)) {
     return entry.aesKey;
@@ -433,7 +440,7 @@ async function kvPutWithEviction(kv, key, value, metadata) {
     await kv.put(key, value, putOpts);
   } catch (_) {
     try {
-      const list = await kv.list();
+      const list = await kv.list({ limit: 100 });
       if (!list.keys || list.keys.length === 0) return;
       const sorted = [...list.keys].sort((a, b) => {
         const aTime = a.metadata?.cached || 0;
@@ -466,7 +473,7 @@ async function handleGetMirrors(env, origin, requestId) {
     });
   }
   try {
-    const list = await kv.list();
+    const list = await kv.list({ limit: 100 });
     const mirrors = [];
     for (const key of list.keys) {
       const val = await kv.get(key.name, { type: "json" });
@@ -527,7 +534,7 @@ async function handleRegisterMirror(request, env, origin, requestId) {
     return errJson(500, "MIRRORS KV namespace not bound", requestId, origin, env);
   }
 
-  const kvKey = parsedUrl.hostname + parsedUrl.pathname;
+  const kvKey = parsedUrl.host + parsedUrl.pathname;
   const entry = {
     url: url,
     registeredAt: new Date().toISOString(),
@@ -535,11 +542,15 @@ async function handleRegisterMirror(request, env, origin, requestId) {
     instagramReady: true
   };
 
-  await kv.put(kvKey, JSON.stringify(entry), { expirationTtl: 3600 });
+  try {
+    await kv.put(kvKey, JSON.stringify(entry), { expirationTtl: 3600 });
+  } catch (err) {
+    return errJson(500, "Failed to register mirror", requestId, origin, env);
+  }
 
   const corsHeaders = getCorsHeaders(origin, env);
   return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
+    status: 201,
     headers: { "Content-Type": "application/json", ...corsHeaders }
   });
 }
@@ -573,8 +584,12 @@ async function handleDeleteMirror(request, env, origin, requestId) {
     return errJson(500, "MIRRORS KV namespace not bound", requestId, origin, env);
   }
 
-  const kvKey = parsedUrl.hostname + parsedUrl.pathname;
-  await kv.delete(kvKey);
+  const kvKey = parsedUrl.host + parsedUrl.pathname;
+  try {
+    await kv.delete(kvKey);
+  } catch (err) {
+    return errJson(500, "Failed to delete mirror", requestId, origin, env);
+  }
 
   const corsHeaders = getCorsHeaders(origin, env);
   return new Response(JSON.stringify({ ok: true }), {
