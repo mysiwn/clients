@@ -1,3 +1,5 @@
 node_modules/
 tokens/
 config.json
+server/config.json
+start.sh
