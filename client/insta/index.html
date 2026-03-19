@@ -29,10 +29,6 @@
                 <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
             </div>
             <div class="setup-field">
-                <label>Vault PIN (encrypts all stored data)</label>
-                <input type="password" class="login-input" id="setup-pin" placeholder="Enter a PIN (4+ characters)" minlength="4" autocomplete="new-password">
-            </div>
-            <div class="setup-field">
                 <label>Notifications</label>
                 <select id="setup-notify-mode">
                     <option value="dm">DMs only</option>
@@ -51,7 +47,12 @@
             <p>Sign in to your account.</p>
             <a href="../faq.html" style="font-size:0.78rem;color:#667eea;text-decoration:none;margin-top:-4px" target="_blank" rel="noopener">FAQ &amp; Security Info</a>
 
-            <div id="browser-login-container" style="width:100%">
+            <div style="display:flex;width:100%;border-bottom:1px solid var(--border);margin-bottom:12px">
+                <button id="tab-browser-btn" style="flex:1;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text-primary);padding:8px;cursor:pointer;font-size:0.9rem;margin-bottom:-1px">Browser Login</button>
+                <button id="tab-session-btn" style="flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:8px;cursor:pointer;font-size:0.9rem;margin-bottom:-1px">Session Login</button>
+            </div>
+
+            <div id="login-tab-playwright" style="width:100%">
                 <div id="browser-status" class="browser-login-status">Enter a server URL or find a mirror.</div>
                 <input type="text" class="login-input" id="playwright-url-input" placeholder="https://xxxx.ngrok-free.app" style="margin-top:8px">
                 <div style="display:flex;gap:8px;margin-top:8px">
@@ -59,6 +60,12 @@
                     <button id="browser-find-btn" style="flex:1;background:#555">Find a Mirror</button>
                 </div>
                 <canvas id="browser-canvas" class="browser-canvas" style="display:none;margin-top:12px"></canvas>
+            </div>
+
+            <div id="login-tab-session" style="width:100%;display:none">
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">Paste your Instagram <code>sessionid</code> cookie to log in directly.</p>
+                <input type="password" class="login-input" id="session-input" placeholder="sessionid cookie value" autocomplete="off">
+                <button id="session-login-btn" style="width:100%;margin-top:8px">Login with Session</button>
             </div>
 
             <div class="notice">

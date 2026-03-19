@@ -367,6 +367,32 @@ function showLoginScreen() {
     loginScreen.style.display = 'flex';
 }
 
+// ── Login Tabs (Browser / Token) ──────────────────────────
+(function () {
+    const tabBrowser = document.getElementById('tab-browser-btn');
+    const tabToken   = document.getElementById('tab-token-btn');
+    const paneBrowser = document.getElementById('login-tab-playwright');
+    const paneToken   = document.getElementById('login-tab-token');
+    if (!tabBrowser) return;
+    function activateTab(which) {
+        const isBrowser = which === 'browser';
+        tabBrowser.style.borderBottomColor  = isBrowser ? 'var(--accent)' : 'transparent';
+        tabBrowser.style.color = isBrowser ? 'var(--text-primary)' : 'var(--text-muted)';
+        tabToken.style.borderBottomColor    = isBrowser ? 'transparent' : 'var(--accent)';
+        tabToken.style.color   = isBrowser ? 'var(--text-muted)' : 'var(--text-primary)';
+        paneBrowser.style.display = isBrowser ? 'block' : 'none';
+        paneToken.style.display   = isBrowser ? 'none'  : 'block';
+    }
+    tabBrowser.addEventListener('click', () => activateTab('browser'));
+    tabToken.addEventListener('click',   () => activateTab('token'));
+})();
+
+document.getElementById('token-login-btn').addEventListener('click', async () => {
+    const token = document.getElementById('token-input').value.trim();
+    if (!token) { showLoginError('Please enter a token.'); return; }
+    await connect(token);
+});
+
 function showLoginError(msg) {
     loginError.textContent = msg;
     loginError.style.display = msg ? 'block' : 'none';

@@ -305,6 +305,32 @@ function showLoginScreen() {
     loginScreen.style.display = 'flex';
 }
 
+// ── Login Tabs (Browser / Session) ───────────────────────
+(function () {
+    const tabBrowser  = document.getElementById('tab-browser-btn');
+    const tabSession  = document.getElementById('tab-session-btn');
+    const paneBrowser = document.getElementById('login-tab-playwright');
+    const paneSession = document.getElementById('login-tab-session');
+    if (!tabBrowser) return;
+    function activateTab(which) {
+        const isBrowser = which === 'browser';
+        tabBrowser.style.borderBottomColor = isBrowser ? 'var(--accent)' : 'transparent';
+        tabBrowser.style.color = isBrowser ? 'var(--text-primary)' : 'var(--text-muted)';
+        tabSession.style.borderBottomColor = isBrowser ? 'transparent' : 'var(--accent)';
+        tabSession.style.color = isBrowser ? 'var(--text-muted)' : 'var(--text-primary)';
+        paneBrowser.style.display = isBrowser ? 'block' : 'none';
+        paneSession.style.display = isBrowser ? 'none'  : 'block';
+    }
+    tabBrowser.addEventListener('click', () => activateTab('browser'));
+    tabSession.addEventListener('click', () => activateTab('session'));
+})();
+
+document.getElementById('session-login-btn').addEventListener('click', async () => {
+    const sessionId = document.getElementById('session-input').value.trim();
+    if (!sessionId) { showLoginError('Please enter a session ID.'); return; }
+    await connectWithSession(sessionId, '', false, '');
+});
+
 function showLoginError(msg) {
     loginError.textContent = msg;
     loginError.style.display = msg ? 'block' : 'none';

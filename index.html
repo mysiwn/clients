@@ -9,6 +9,41 @@
         button { display: block; width: 100%; margin: 8px 0; padding: 10px; font-size: 1rem; cursor: pointer; }
         .btn-clear { background: none; color: #999; border: 1px solid #ccc; font-size: 0.85rem; }
         small { color: #999; }
+        /* ── FAQ Modal ─────────────────────────────────────── */
+        #faq-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:999; justify-content:center; align-items:center; }
+        #faq-modal { background:#1a1a2e; color:#e0e0e0; border-radius:10px; width:min(820px,94vw); max-height:88vh; display:flex; flex-direction:column; overflow:hidden; font-family:sans-serif; }
+        #faq-modal-head { display:flex; justify-content:space-between; align-items:center; padding:18px 22px 0; background:linear-gradient(135deg,#667eea,#764ba2); flex-shrink:0; }
+        #faq-modal-head h2 { margin:0; font-size:1.2rem; color:#fff; }
+        #faq-close { background:none; border:none; color:#fff; font-size:1.4rem; cursor:pointer; line-height:1; padding:0 0 0 12px; display:inline; width:auto; margin:0; }
+        .faq-tabs { display:flex; background:linear-gradient(135deg,#667eea,#764ba2); padding:10px 22px 0; gap:4px; flex-shrink:0; }
+        .faq-tab { background:none; border:none; border-bottom:2px solid transparent; color:rgba(255,255,255,.7); padding:8px 16px; cursor:pointer; font-size:0.9rem; display:inline; width:auto; margin:0; border-radius:0; }
+        .faq-tab.active { color:#fff; border-bottom-color:#fff; }
+        #faq-body { overflow-y:auto; padding:20px 22px; flex:1; }
+        .faq-section-m { display:none; } .faq-section-m.active { display:block; }
+        .section-title-m { font-size:1.1rem; color:#fff; margin:0 0 16px; }
+        .faq-item-m { border:1px solid #2a2a4a; border-radius:8px; margin-bottom:8px; overflow:hidden; }
+        .faq-q-m { width:100%; text-align:left; background:#16213e; border:none; color:#e0e0e0; padding:14px 16px; cursor:pointer; display:flex; align-items:center; gap:10px; font-size:0.92rem; margin:0; }
+        .faq-q-m .arrow-m { margin-left:auto; transition:transform .2s; font-size:0.75rem; }
+        .faq-item-m.open .arrow-m { transform:rotate(180deg); }
+        .faq-ans-m { display:none; padding:12px 16px; background:#16213e; border-top:1px solid #2a2a4a; font-size:0.88rem; line-height:1.6; color:#ccc; }
+        .faq-item-m.open .faq-ans-m { display:block; }
+        .faq-ans-m a { color:#667eea; }
+        .feature-group-m { margin-bottom:24px; }
+        .feature-group-m h3 { color:#fff; font-size:1rem; margin:0 0 12px; }
+        .feature-list-m { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+        .feature-card-m { background:#16213e; border:1px solid #2a2a4a; border-radius:8px; padding:12px; display:flex; align-items:flex-start; gap:10px; }
+        .feat-icon-m { font-size:1.3rem; flex-shrink:0; }
+        .feat-text-m { font-size:0.82rem; color:#ccc; line-height:1.4; }
+        .feat-text-m strong { color:#e0e0e0; display:block; margin-bottom:2px; }
+        .security-grid-m { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+        .security-card-m { background:#16213e; border:1px solid #2a2a4a; border-left:4px solid #667eea; border-radius:8px; padding:14px 16px; }
+        .security-card-m h4 { color:#fff; margin:0 0 8px; font-size:0.95rem; }
+        .security-card-m .what-m { font-size:0.85rem; color:#ccc; margin:0 0 8px; line-height:1.5; }
+        .security-card-m .how-m { font-size:0.82rem; color:#2ed573; margin:0; line-height:1.5; }
+        .security-card-m .how-m::before { content:"✓ "; }
+        .security-card-m a { color:#667eea; }
+        .faq-badges { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+        .faq-badge { background:#2a2a4a; border-radius:20px; padding:4px 12px; font-size:0.78rem; color:#ccc; }
     </style>
 </head>
 <body>
@@ -16,7 +51,141 @@
     <button onclick="launchClient('discord')">Discord</button>
     <button onclick="launchClient('insta')">Instagram</button>
     <button class="btn-clear" onclick="clearData()">Clear All Data</button>
+    <button class="btn-clear" onclick="document.getElementById('faq-overlay').style.display='flex'">FAQ &amp; Security</button>
+    <button class="btn-clear" onclick="document.getElementById('bkmk-overlay').style.display='flex'">Get Token / Session ID</button>
     <small>Reload to switch clients</small>
+
+    <!-- ── Bookmarklet Modal ────────────────────────────────── -->
+    <div id="bkmk-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;justify-content:center;align-items:center" onclick="if(event.target===this)this.style.display='none'">
+      <div style="background:#1a1a2e;color:#e0e0e0;border-radius:10px;width:min(560px,94vw);max-height:88vh;overflow-y:auto;font-family:sans-serif;padding:22px;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h2 style="margin:0;font-size:1.1rem;color:#fff">Get Your Token / Session ID</h2>
+          <button style="background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer;line-height:1;display:inline;width:auto;margin:0;padding:0" onclick="document.getElementById('bkmk-overlay').style.display='none'">&times;</button>
+        </div>
+        <p style="font-size:0.85rem;color:#aaa;margin:0 0 18px;line-height:1.6">Drag the button below to your bookmarks bar. Then visit the site and click the bookmark — it copies your token/session ID to the clipboard automatically.</p>
+
+        <!-- Discord -->
+        <div style="background:#16213e;border:1px solid #2a2a4a;border-radius:8px;padding:16px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:1.3rem">&#128172;</span>
+            <strong style="color:#fff">Discord Token</strong>
+          </div>
+          <p style="font-size:0.82rem;color:#aaa;margin:0 0 12px">Works on <strong style="color:#ccc">discord.com</strong>. Extracts your auth token from Discord's internal module system.</p>
+          <a id="discord-bkmk" href="javascript:(function(){try{var t=(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken).exports.default.getToken();if(t){navigator.clipboard.writeText(t).then(function(){alert('Discord token copied to clipboard!')}).catch(function(){prompt('Copy your token:',t)})}else{alert('Token not found. Make sure you are logged in to discord.com.')}}catch(e){alert('Error: '+e.message+'\n\nMake sure you are on discord.com and logged in.')}})()" style="display:inline-block;background:#5865f2;color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-size:0.88rem;cursor:grab" draggable="true">&#128172; Get Discord Token</a>
+          <p style="font-size:0.78rem;color:#666;margin:10px 0 0">Drag to your bookmarks bar, then click it while on discord.com</p>
+        </div>
+
+        <!-- Instagram -->
+        <div style="background:#16213e;border:1px solid #2a2a4a;border-radius:8px;padding:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:1.3rem">&#128247;</span>
+            <strong style="color:#fff">Instagram Session ID</strong>
+          </div>
+          <p style="font-size:0.82rem;color:#aaa;margin:0 0 12px">Works on <strong style="color:#ccc">instagram.com</strong>. Reads your <code style="background:#2a2a4a;padding:1px 5px;border-radius:3px">sessionid</code> cookie.</p>
+          <a id="insta-bkmk" href="javascript:(function(){var m=document.cookie.match(/(^|;)\s*sessionid=([^;]+)/);if(m){navigator.clipboard.writeText(m[2]).then(function(){alert('Instagram session ID copied to clipboard!')}).catch(function(){prompt('Copy your session ID:',m[2])})}else{alert('Session ID not found. Make sure you are logged in to instagram.com.')}})()" style="display:inline-block;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-size:0.88rem;cursor:grab" draggable="true">&#128247; Get Instagram Session ID</a>
+          <p style="font-size:0.78rem;color:#666;margin:10px 0 0">Drag to your bookmarks bar, then click it while on instagram.com</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FAQ Modal ───────────────────────────────────────── -->
+    <div id="faq-overlay" onclick="if(event.target===this)this.style.display='none'">
+      <div id="faq-modal">
+        <div id="faq-modal-head">
+          <h2>FAQ &amp; Security</h2>
+          <button id="faq-close" onclick="document.getElementById('faq-overlay').style.display='none'">&times;</button>
+        </div>
+        <div class="faq-tabs">
+          <button class="faq-tab active" data-sec="faq-m">Student FAQ</button>
+          <button class="faq-tab" data-sec="features-m">Features</button>
+          <button class="faq-tab" data-sec="security-m">Security</button>
+        </div>
+        <div id="faq-body">
+
+          <!-- Student FAQ -->
+          <div id="faq-m" class="faq-section-m active">
+            <div class="faq-badges">
+              <span class="faq-badge">&#128194; Open Source</span>
+              <span class="faq-badge">&#128274; End-to-End Encrypted</span>
+              <span class="faq-badge">&#9889; 100% Free</span>
+            </div>
+            <h3 class="section-title-m">Frequently Asked Questions</h3>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128274;</span>Is this safe to use?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p><strong>Yes.</strong> This project is fully open source — anyone can read every line of code on <a href="https://github.com/mysiwn/school" target="_blank" rel="noopener">GitHub</a>. Your data is never sent to any third-party server. No analytics, no tracking, no ads.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128273;</span>Is my password saved anywhere?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p>Your password is <strong>never</strong> stored. Your session token is encrypted with AES-256-GCM using a PIN only you know and stored in your browser's local storage. The encrypted data is useless without your PIN.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#127979;</span>Can attackers, my school, or work see my data?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p><strong>No.</strong> Even if a network installs root certificates to inspect HTTPS traffic, we encrypt all sensitive data <em>inside your browser</em> before it hits the network using ECDH + AES-256-GCM. To any network observer it looks like random encrypted data.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128229;</span>Is my data stored on a server?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p>The only server-side storage is an <strong>encrypted image cache</strong> that expires after 2 days. No passwords, tokens, messages, or personal data are ever stored on our servers.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128683;</span>What happens when I close the tab?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p>The vault <strong>locks automatically</strong>. The master key only lives in memory — it's gone when you close the tab. You'll need your PIN to unlock on return.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128187;</span>Do I need to install anything?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p><strong>Nope!</strong> Everything runs in your browser. Open the HTML file and go. The optional Playwright login requires Node.js but that's entirely optional.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128246;</span>Does this work on school/work WiFi?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p><strong>Yes — that's exactly what it's designed for.</strong> Networks that block Discord/Instagram and inspect HTTPS traffic are bypassed by routing through a Cloudflare Workers proxy with client-side encryption.</p></div></div>
+            <div class="faq-item-m"><button class="faq-q-m"><span>&#128101;</span>Who made this?<span class="arrow-m">&#9660;</span></button><div class="faq-ans-m"><p>This is an open source project built to help anyone access their social platforms on restricted networks while maintaining privacy. Contributions welcome on <a href="https://github.com/mysiwn/school" target="_blank" rel="noopener">GitHub</a>.</p></div></div>
+          </div>
+
+          <!-- Features -->
+          <div id="features-m" class="faq-section-m">
+            <h3 class="section-title-m">All Features</h3>
+            <div class="feature-group-m">
+              <h3>&#128172; Discord Client</h3>
+              <div class="feature-list-m">
+                <div class="feature-card-m"><span class="feat-icon-m">&#128273;</span><div class="feat-text-m"><strong>Multiple Login Methods</strong>Browser stream, token, or QR code</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#9889;</span><div class="feat-text-m"><strong>Real-Time Messaging</strong>Live WebSocket gateway</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#127968;</span><div class="feat-text-m"><strong>Server &amp; Channel Browsing</strong>Full guild list with channels</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128172;</span><div class="feat-text-m"><strong>Direct Messages</strong>Private &amp; group DMs</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128206;</span><div class="feat-text-m"><strong>File &amp; Image Uploads</strong>Share with previews</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128274;</span><div class="feat-text-m"><strong>E2E Encrypted Messages</strong>Passphrase-based encryption</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128522;</span><div class="feat-text-m"><strong>Emoji Rendering</strong>Full Twemoji support</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128276;</span><div class="feat-text-m"><strong>Notifications</strong>DMs, mentions, or all messages</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128683;</span><div class="feat-text-m"><strong>User/Server/Channel Blocking</strong>Local block lists</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#9999;</span><div class="feat-text-m"><strong>Edit &amp; Delete Messages</strong>Your own messages</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#9000;</span><div class="feat-text-m"><strong>Typing Indicators</strong>Real-time via gateway</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128196;</span><div class="feat-text-m"><strong>Rich Embeds</strong>Link previews &amp; images</div></div>
+              </div>
+            </div>
+            <div class="feature-group-m">
+              <h3>&#128247; Instagram Client</h3>
+              <div class="feature-list-m">
+                <div class="feature-card-m"><span class="feat-icon-m">&#128273;</span><div class="feat-text-m"><strong>Flexible Login</strong>Browser stream or sessionid cookie</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#127968;</span><div class="feat-text-m"><strong>Feed &amp; Explore</strong>Full post viewing</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128172;</span><div class="feat-text-m"><strong>Direct Messages</strong>Full inbox, send &amp; receive</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128100;</span><div class="feat-text-m"><strong>Profile Viewing</strong>Any user's profile &amp; posts</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#10084;</span><div class="feat-text-m"><strong>Post Likes</strong>Like and unlike posts</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#127902;</span><div class="feat-text-m"><strong>Story Viewing</strong>Watch stories</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128269;</span><div class="feat-text-m"><strong>User Search</strong>Find any user</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128276;</span><div class="feat-text-m"><strong>Notifications</strong>DMs &amp; activity</div></div>
+              </div>
+            </div>
+            <div class="feature-group-m">
+              <h3>&#128737; Shared Features</h3>
+              <div class="feature-list-m">
+                <div class="feature-card-m"><span class="feat-icon-m">&#128274;</span><div class="feat-text-m"><strong>Encrypted CORS Proxy</strong>ECDH + AES-256-GCM</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#127979;</span><div class="feat-text-m"><strong>Network Bypass</strong>Works on restricted WiFi</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#127760;</span><div class="feat-text-m"><strong>No Install Required</strong>Runs in your browser</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128272;</span><div class="feat-text-m"><strong>PIN-Protected Vault</strong>AES-256 encrypted storage</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128241;</span><div class="feat-text-m"><strong>PWA Support</strong>Install as an app</div></div>
+                <div class="feature-card-m"><span class="feat-icon-m">&#128194;</span><div class="feat-text-m"><strong>Open Source</strong>All code on GitHub</div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security -->
+          <div id="security-m" class="faq-section-m">
+            <h3 class="section-title-m">Security Deep Dive</h3>
+            <p style="color:#8888aa;font-size:0.87rem;margin:-8px 0 16px">Every security feature explained — what it does and how it protects you.</p>
+            <div class="security-grid-m">
+              <div class="security-card-m"><h4>&#128272; ECDH Key Exchange</h4><p class="what-m">Creates a unique shared encryption key between your browser and the CORS proxy using Elliptic Curve Diffie-Hellman (P-256).</p><p class="how-m">Even if traffic is intercepted, the shared secret can't be derived. Data stays encrypted end-to-end.</p></div>
+              <div class="security-card-m"><h4>&#128274; AES-256-GCM Encryption</h4><p class="what-m">All auth headers and API responses are encrypted using AES-256-GCM — the standard used by governments and banks.</p><p class="how-m">Tokens and passwords appear as random blobs in transit. Network inspectors see only ciphertext.</p></div>
+              <div class="security-card-m"><h4>&#128273; Encrypted Vault</h4><p class="what-m">Credentials stored in AES-256-GCM vault. Key derived from your PIN via PBKDF2 with 600,000 iterations.</p><p class="how-m">Even with storage access, brute-forcing the 600K-iteration key derivation is computationally infeasible.</p></div>
+              <div class="security-card-m"><h4>&#128737; SSRF Prevention</h4><p class="what-m">Proxy maintains a strict allowlist. Only official Discord and Instagram domains are permitted.</p><p class="how-m">Prevents proxy abuse to access internal networks or unauthorized services.</p></div>
+              <div class="security-card-m"><h4>&#128678; Rate Limiting</h4><p class="what-m">Per-IP limits: 120 req/min for API, 30/min for images, 5/min for key registration.</p><p class="how-m">Protects against abuse and prevents your account from being flagged for suspicious activity.</p></div>
+              <div class="security-card-m"><h4>&#9202; Anti-Replay</h4><p class="what-m">Every request includes a timestamp. Requests older than 60 seconds are rejected.</p><p class="how-m">Captured traffic can't be replayed later. Prevents session hijacking.</p></div>
+              <div class="security-card-m"><h4>&#128451; Zero Server Storage</h4><p class="what-m">No passwords, tokens, or personal data stored server-side. Only an encrypted image cache with 2-day expiry.</p><p class="how-m">Even a compromised server has no credentials to steal.</p></div>
+              <div class="security-card-m"><h4>&#128194; Open Source</h4><p class="what-m">All code is publicly available on <a href="https://github.com/mysiwn/school" target="_blank" rel="noopener">GitHub</a> for anyone to audit.</p><p class="how-m">No backdoors, no hidden collection, no obscurity — full transparency.</p></div>
+              <div class="security-card-m"><h4>&#128274; E2E Message Encryption</h4><p class="what-m">Optional Discord message encryption via shared passphrase. AES-256-GCM before sending through the API.</p><p class="how-m">Even Discord's servers can't read E2E-encrypted messages.</p></div>
+            </div>
+          </div>
+
+        </div><!-- /faq-body -->
+      </div><!-- /faq-modal -->
+    </div><!-- /faq-overlay -->
 
 <script type="text/plain" id="src-security-js">
 // ══════════════════════════════════════════════════════════
@@ -1826,10 +1995,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
                 <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
             </div>
             <div class="setup-field">
-                <label>Vault PIN (encrypts all stored data)</label>
-                <input type="password" class="login-input" id="setup-pin" placeholder="Enter a PIN (4+ characters)" minlength="4" autocomplete="new-password">
-            </div>
-            <div class="setup-field">
                 <label>Notifications</label>
                 <select id="setup-notify-mode">
                     <option value="dm_mentions">DMs + Mentions</option>
@@ -1847,9 +2012,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
         <div class="login-box">
             <h2>Local Client</h2>
             <p>Sign in to Discord.</p>
-            <a href="client/faq.html" style="font-size:0.78rem;color:#667eea;text-decoration:none;margin-top:-4px" target="_blank" rel="noopener">FAQ &amp; Security Info</a>
+            <div style="display:flex;width:100%;border-bottom:1px solid var(--border);margin-bottom:12px">
+                <button id="tab-browser-btn" style="flex:1;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text-primary);padding:8px;cursor:pointer;font-size:0.9rem;margin-bottom:-1px">Browser Login</button>
+                <button id="tab-token-btn" style="flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:8px;cursor:pointer;font-size:0.9rem;margin-bottom:-1px">Token Login</button>
+            </div>
 
-            <div id="browser-login-container" style="width:100%">
+            <div id="login-tab-playwright" style="width:100%">
                 <div id="browser-status" class="browser-login-status">Enter a server URL or find a mirror.</div>
                 <input type="text" class="login-input" id="playwright-url-input" placeholder="https://xxxx.ngrok-free.app" style="margin-top:8px">
                 <div style="display:flex;gap:8px;margin-top:8px">
@@ -1857,6 +2025,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
                     <button id="browser-find-btn" style="flex:1;background:#4f545c">Find a Mirror</button>
                 </div>
                 <canvas id="browser-canvas" class="browser-canvas" style="display:none;margin-top:12px"></canvas>
+            </div>
+
+            <div id="login-tab-token" style="width:100%;display:none">
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">Paste your Discord user token to log in directly.</p>
+                <input type="password" class="login-input" id="token-input" placeholder="Discord user token" autocomplete="off">
+                <button id="token-login-btn" style="width:100%;margin-top:8px">Login with Token</button>
             </div>
 
             <div class="notice">
@@ -2339,6 +2513,32 @@ function showLoginScreen() {
     document.getElementById('playwright-url-input').value = playwrightUrl;
     loginScreen.style.display = 'flex';
 }
+
+// ── Login Tabs (Browser / Token) ──────────────────────────
+(function () {
+    const tabBrowser = document.getElementById('tab-browser-btn');
+    const tabToken   = document.getElementById('tab-token-btn');
+    const paneBrowser = document.getElementById('login-tab-playwright');
+    const paneToken   = document.getElementById('login-tab-token');
+    if (!tabBrowser) return;
+    function activateTab(which) {
+        const isBrowser = which === 'browser';
+        tabBrowser.style.borderBottomColor  = isBrowser ? 'var(--accent)' : 'transparent';
+        tabBrowser.style.color = isBrowser ? 'var(--text-primary)' : 'var(--text-muted)';
+        tabToken.style.borderBottomColor    = isBrowser ? 'transparent' : 'var(--accent)';
+        tabToken.style.color   = isBrowser ? 'var(--text-muted)' : 'var(--text-primary)';
+        paneBrowser.style.display = isBrowser ? 'block' : 'none';
+        paneToken.style.display   = isBrowser ? 'none'  : 'block';
+    }
+    tabBrowser.addEventListener('click', () => activateTab('browser'));
+    tabToken.addEventListener('click',   () => activateTab('token'));
+})();
+
+document.getElementById('token-login-btn').addEventListener('click', async () => {
+    const token = document.getElementById('token-input').value.trim();
+    if (!token) { showLoginError('Please enter a token.'); return; }
+    await connect(token);
+});
 
 function showLoginError(msg) {
     loginError.textContent = msg;
@@ -3840,10 +4040,6 @@ init();
                 <input type="text" class="login-input" id="setup-proxy-url" placeholder="https://cors-proxy.mysiwn.workers.dev" value="https://cors-proxy.mysiwn.workers.dev">
             </div>
             <div class="setup-field">
-                <label>Vault PIN (encrypts all stored data)</label>
-                <input type="password" class="login-input" id="setup-pin" placeholder="Enter a PIN (4+ characters)" minlength="4" autocomplete="new-password">
-            </div>
-            <div class="setup-field">
                 <label>Notifications</label>
                 <select id="setup-notify-mode">
                     <option value="dm">DMs only</option>
@@ -3860,9 +4056,12 @@ init();
         <div class="login-box">
             <h2 class="ig-logo">Instagram</h2>
             <p>Sign in to your account.</p>
-            <a href="client/faq.html" style="font-size:0.78rem;color:#667eea;text-decoration:none;margin-top:-4px" target="_blank" rel="noopener">FAQ &amp; Security Info</a>
+            <div style="display:flex;width:100%;border-bottom:1px solid var(--border);margin-bottom:12px">
+                <button id="tab-browser-btn" style="flex:1;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text-primary);padding:8px;cursor:pointer;font-size:0.9rem;margin-bottom:-1px">Browser Login</button>
+                <button id="tab-session-btn" style="flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:8px;cursor:pointer;font-size:0.9rem;margin-bottom:-1px">Session Login</button>
+            </div>
 
-            <div id="browser-login-container" style="width:100%">
+            <div id="login-tab-playwright" style="width:100%">
                 <div id="browser-status" class="browser-login-status">Enter a server URL or find a mirror.</div>
                 <input type="text" class="login-input" id="playwright-url-input" placeholder="https://xxxx.ngrok-free.app" style="margin-top:8px">
                 <div style="display:flex;gap:8px;margin-top:8px">
@@ -3870,6 +4069,12 @@ init();
                     <button id="browser-find-btn" style="flex:1;background:#555">Find a Mirror</button>
                 </div>
                 <canvas id="browser-canvas" class="browser-canvas" style="display:none;margin-top:12px"></canvas>
+            </div>
+
+            <div id="login-tab-session" style="width:100%;display:none">
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">Paste your Instagram <code>sessionid</code> cookie to log in directly.</p>
+                <input type="password" class="login-input" id="session-input" placeholder="sessionid cookie value" autocomplete="off">
+                <button id="session-login-btn" style="width:100%;margin-top:8px">Login with Session</button>
             </div>
 
             <div class="notice">
@@ -4277,6 +4482,32 @@ function showLoginScreen() {
     document.getElementById('playwright-url-input').value = playwrightUrl;
     loginScreen.style.display = 'flex';
 }
+
+// ── Login Tabs (Browser / Session) ───────────────────────
+(function () {
+    const tabBrowser  = document.getElementById('tab-browser-btn');
+    const tabSession  = document.getElementById('tab-session-btn');
+    const paneBrowser = document.getElementById('login-tab-playwright');
+    const paneSession = document.getElementById('login-tab-session');
+    if (!tabBrowser) return;
+    function activateTab(which) {
+        const isBrowser = which === 'browser';
+        tabBrowser.style.borderBottomColor = isBrowser ? 'var(--accent)' : 'transparent';
+        tabBrowser.style.color = isBrowser ? 'var(--text-primary)' : 'var(--text-muted)';
+        tabSession.style.borderBottomColor = isBrowser ? 'transparent' : 'var(--accent)';
+        tabSession.style.color = isBrowser ? 'var(--text-muted)' : 'var(--text-primary)';
+        paneBrowser.style.display = isBrowser ? 'block' : 'none';
+        paneSession.style.display = isBrowser ? 'none'  : 'block';
+    }
+    tabBrowser.addEventListener('click', () => activateTab('browser'));
+    tabSession.addEventListener('click', () => activateTab('session'));
+})();
+
+document.getElementById('session-login-btn').addEventListener('click', async () => {
+    const sessionId = document.getElementById('session-input').value.trim();
+    if (!sessionId) { showLoginError('Please enter a session ID.'); return; }
+    await connectWithSession(sessionId, '', false, '');
+});
 
 function showLoginError(msg) {
     loginError.textContent = msg;
@@ -5494,7 +5725,7 @@ init();
 
 <script>
 // ── Auto-update ───────────────────────────────────────────
-const VERSION = '20260319.1';
+const VERSION = '20260319.10';
 (async function autoUpdate() {
     const RAW = 'https://raw.githubusercontent.com/mysiwn/clients/main/index.html';
     try {
@@ -5610,6 +5841,24 @@ async function clearData() {
     alert('All data cleared. Reloading...');
     location.reload();
 }
+
+// ── FAQ Modal ─────────────────────────────────────────────
+document.querySelectorAll('.faq-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.faq-tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.faq-section-m').forEach(function(s) { s.classList.remove('active'); });
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.sec).classList.add('active');
+    });
+});
+document.querySelectorAll('.faq-q-m').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var item = btn.parentElement;
+        var wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item-m.open').forEach(function(i) { i.classList.remove('open'); });
+        if (!wasOpen) item.classList.add('open');
+    });
+});
 </script>
 </body>
 </html>
