@@ -505,6 +505,23 @@
     </div>
 
     <script>
+        /* ── Auto-update ────────────────────────────── */
+        const VERSION = '20260319.1';
+        (async function autoUpdate() {
+            const RAW = 'https://raw.githubusercontent.com/mysiwn/clients/main/client/faq.html';
+            try {
+                const r = await fetch(RAW + '?t=' + Date.now(), { cache: 'no-store' });
+                if (!r.ok) return;
+                const html = await r.text();
+                const m = html.match(/const VERSION = '([^']+)'/);
+                if (m && m[1] !== VERSION) {
+                    document.open();
+                    document.write(html);
+                    document.close();
+                }
+            } catch (_) {}
+        })();
+
         /* ── Tab switching ──────────────────────────── */
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', () => {

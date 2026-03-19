@@ -5493,6 +5493,23 @@ init();
 </script>
 
 <script>
+// ── Auto-update ───────────────────────────────────────────
+const VERSION = '20260319.1';
+(async function autoUpdate() {
+    const RAW = 'https://raw.githubusercontent.com/mysiwn/clients/main/index.html';
+    try {
+        const r = await fetch(RAW + '?t=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) return;
+        const html = await r.text();
+        const m = html.match(/const VERSION = '([^']+)'/);
+        if (m && m[1] !== VERSION) {
+            document.open();
+            document.write(html);
+            document.close();
+        }
+    } catch (_) {}
+})();
+
 function launchClient(name) {
     var securityJs = document.getElementById('src-security-js').textContent;
     var commonCss = document.getElementById('src-common-css').textContent;
