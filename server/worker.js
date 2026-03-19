@@ -752,6 +752,33 @@ export default {
       }
     }
 
+    // ── /mirror-status — server-side proxy for mirror /status ────
+    if (url.pathname === "/mirror-status" && request.method === "GET") {
+      const rl = checkRateLimit(ip, "mirrors");
+      if (rl > 0) return rateLimitResponse(rl, origin, env, requestId);
+      const mirrorUrl = url.searchParams.get("url");
+      if (!mirrorUrl) return errJson(400, "Missing url param", requestId, origin, env);
+      let parsedMirror;
+      try { parsedMirror = new URL(mirrorUrl); } catch { return errJson(400, "Invalid mirror url", requestId, origin, env); }
+      if (parsedMirror.protocol !== "https:" && !parsedMirror.hostname.endsWith(".ngrok-free.app") && !parsedMirror.hostname.endsWith(".ngrok.io")) {
+        return errJson(400, "Mirror URL must be HTTPS or ngrok", requestId, origin, env);
+      }
+      try {
+        const statusUrl = mirrorUrl.replace(/\/+$/, "") + "/status";
+        const resp = await fetch(statusUrl, { signal: AbortSignal.timeout(5000) });
+        const data = resp.ok ? await resp.json().catch(() => ({})) : {};
+        return new Response(JSON.stringify({ ok: resp.ok, ...data }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...getCorsHeaders(origin, env) }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ ok: false, error: err.message || "timeout" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...getCorsHeaders(origin, env) }
+        });
+      }
+    }
+
     // ── /mirrors endpoints ────────────────────────────────
     if (url.pathname === "/mirrors" || url.pathname === "/mirrors/") {
       if (request.method === "GET") {

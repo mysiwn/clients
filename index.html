@@ -2372,19 +2372,13 @@ async function fetchMirrors() {
         if (!mirrorList.length) { status.textContent = 'No mirrors listed.'; status.className = 'browser-login-status error'; return; }
         status.textContent = `Testing ${mirrorList.length} mirror(s)...`;
         const available = [];
-        // Mirrors from the worker include readiness fields — use them directly to avoid
-        // browser-side CORS errors when fetching /status from mirror servers (e.g. ngrok tunnels).
-        // Mirrors from the root-server fallback are plain strings; fall back to /status fetch.
+        // Always proxy /status checks through the worker to avoid browser-side CORS errors.
         await Promise.all(mirrorList.map(async entry => {
-            if (typeof entry === 'object' && entry.url) {
-                if (entry.discordReady !== false) available.push(entry.url);
-            } else {
-                const url = entry;
-                try {
-                    const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-                    if (r.ok) { const d = await r.json(); if (d.ok && (d.discord?.ready || d.discord?.hasCachedToken)) available.push(url); }
-                } catch (e) { console.warn('[discord] mirror test failed:', e); }
-            }
+            const mirrorUrl = typeof entry === 'object' ? entry.url : entry;
+            try {
+                const r = await fetch(clientConfig.proxyBase + '/mirror-status?url=' + encodeURIComponent(mirrorUrl), { signal: AbortSignal.timeout(5000) });
+                if (r.ok) { const d = await r.json(); if (d.ok && (d.discord?.ready || d.discord?.hasCachedToken)) available.push(mirrorUrl); }
+            } catch (e) { console.warn('[discord] mirror test failed:', e); }
         }));
         if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }
         const sel = document.getElementById('playwright-url-input');
@@ -4322,16 +4316,13 @@ async function fetchMirrors() {
         // Mirrors from the worker include readiness fields — use them directly to avoid
         // browser-side CORS errors when fetching /status from mirror servers (e.g. ngrok tunnels).
         // Mirrors from the root-server fallback are plain strings; fall back to /status fetch.
+        // Always proxy /status checks through the worker to avoid browser-side CORS errors.
         await Promise.all(mirrorList.map(async entry => {
-            if (typeof entry === 'object' && entry.url) {
-                if (entry.instagramReady !== false) available.push(entry.url);
-            } else {
-                const url = entry;
-                try {
-                    const r = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
-                    if (r.ok) { const d = await r.json(); if (d.ok && (d.instagram?.ready || d.instagram?.hasCachedSession)) available.push(url); }
-                } catch (e) { console.warn('[instagram]', e); }
-            }
+            const mirrorUrl = typeof entry === 'object' ? entry.url : entry;
+            try {
+                const r = await fetch(clientConfig.proxyBase + '/mirror-status?url=' + encodeURIComponent(mirrorUrl), { signal: AbortSignal.timeout(5000) });
+                if (r.ok) { const d = await r.json(); if (d.ok && (d.instagram?.ready || d.instagram?.hasCachedSession)) available.push(mirrorUrl); }
+            } catch (e) { console.warn('[instagram]', e); }
         }));
         if (!available.length) { status.textContent = 'No mirrors online right now.'; status.className = 'browser-login-status error'; return; }
         document.getElementById('playwright-url-input').value = available[0];
