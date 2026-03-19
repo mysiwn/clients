@@ -161,14 +161,17 @@ echo ""
 echo "[*] Checking ngrok authentication..."
 
 NGROK_AUTHED=false
-if ngrok config check 2>/dev/null | grep -q "valid"; then
-    NGROK_AUTHED=true
-elif ngrok diagnose 2>/dev/null | grep -qi "authtoken.*ok"; then
-    NGROK_AUTHED=true
-elif [ -f "$HOME/.config/ngrok/ngrok.yml" ] && grep -q "authtoken:" "$HOME/.config/ngrok/ngrok.yml" 2>/dev/null; then
+# Check config files first (no network calls, never hangs)
+if [ -f "$HOME/.config/ngrok/ngrok.yml" ] && grep -q "authtoken:" "$HOME/.config/ngrok/ngrok.yml" 2>/dev/null; then
     NGROK_AUTHED=true
 elif [ -f "$HOME/.ngrok2/ngrok.yml" ] && grep -q "authtoken:" "$HOME/.ngrok2/ngrok.yml" 2>/dev/null; then
     NGROK_AUTHED=true
+else
+    # Fallback: ask ngrok where its config lives, then check that file
+    _cfg=$(ngrok config check 2>/dev/null | grep -o '/[^ ]*\.yml' | head -1)
+    if [ -n "$_cfg" ] && grep -q "authtoken:" "$_cfg" 2>/dev/null; then
+        NGROK_AUTHED=true
+    fi
 fi
 
 if [ "$NGROK_AUTHED" = false ]; then
