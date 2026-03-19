@@ -129,9 +129,10 @@ install_ngrok() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
     case "$ARCH" in
-        x86_64|amd64) ARCH="amd64" ;;
-        aarch64|arm64) ARCH="arm64" ;;
-        armv7l|armhf) ARCH="arm" ;;
+        x86_64|amd64)   ARCH="amd64" ;;
+        aarch64|arm64)  ARCH="arm64" ;;
+        armv7l|armhf)   ARCH="arm" ;;
+        i686|i386)      ARCH="386" ;;
         *) echo "[!] Unsupported architecture: $ARCH"; exit 1 ;;
     esac
 
