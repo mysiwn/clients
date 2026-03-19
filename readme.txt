@@ -7,13 +7,29 @@ FOR USERS
 2. Pick Discord or Instagram.
 3. Set a vault PIN (encrypts your credentials locally).
 4. Enter your CORS proxy URL (default is provided).
-5. Click "Find a Mirror" to auto-discover a server,
-   or paste a mirror URL manually.
-6. Log in through the remote browser stream.
-7. Done — your session is saved in your encrypted vault.
+5. Choose a login method:
+   a) Browser Login: click "Find a Mirror" to auto-discover a
+      streaming server, or paste a URL manually. Log in through
+      the remote browser — your token is captured automatically.
+   b) Token Login (Discord): paste your user token directly.
+      Use the "Get Token / Session ID" button on the launcher
+      to grab it via bookmarklet on discord.com.
+   c) Session Login (Instagram): paste your sessionid cookie.
+      Use the bookmarklet on instagram.com to grab it.
+6. Done — your session is saved in your encrypted vault.
 
 Your credentials never leave your browser. Everything is
 encrypted with AES-256-GCM and locked behind your PIN.
+
+
+GETTING YOUR TOKEN / SESSION ID (bookmarklets)
+-----------------------------------------------
+1. Open index.html and click "Get Token / Session ID".
+2. Drag the bookmarklet button to your browser's bookmarks bar.
+3. Visit discord.com or instagram.com (while logged in).
+4. Click the bookmark — your token/sessionid is copied to
+   clipboard automatically.
+5. Paste it into the Token Login / Session Login tab.
 
 
 SETTINGS (in-app gear icon)
@@ -27,24 +43,46 @@ Multi-tab: While streaming, click "+" to open additional tabs
 in the remote browser. Click tab names to switch between them.
 
 
-FOR HOSTERS (contribute a mirror)
-----------------------------------
-1. Run:  bash contribute.sh
-2. It handles everything automatically:
-   - Installs Node.js, Chromium, and ngrok
-   - Checks for ngrok auth — prompts for a free token if missing
-     (get one at https://dashboard.ngrok.com/signup)
-   - Starts the Playwright browser server (multi-tab enabled)
-   - Opens an ngrok tunnel
-   - Registers your mirror so users can find it
-   - Heartbeats every 25 min to stay listed
-3. Press Ctrl+C to stop.
+FOR HOSTERS — FROM SCRATCH
+----------------------------
+Host a mirror on any Linux/macOS machine in 5 minutes:
 
-Optional: set ROOT_SERVER env var to also register with a
-backup mirror registry:
-  ROOT_SERVER=http://your-pi:8090 bash contribute.sh
+  Requirements: curl, 2 GB RAM, stable internet, any modern OS
+  (Linux, macOS, WSL2, GitHub Codespaces, Raspberry Pi all work)
 
-Requirements: Linux/macOS, curl, 2GB RAM, stable internet.
+  Step 1 — Get a free ngrok account
+    https://dashboard.ngrok.com/signup
+    Copy your authtoken from: https://dashboard.ngrok.com/get-started/your-authtoken
+
+  Step 2 — Clone the repo
+    git clone https://github.com/mysiwn/school
+    cd school
+
+  Step 3 — Run the script
+    sh contribute.sh
+    (The script auto-installs Node.js 18+, Chromium, and ngrok)
+    (You will be prompted for your ngrok authtoken on first run)
+
+  Step 4 — Keep it running
+    Leave the terminal open. Press Ctrl+C to stop.
+    Your mirror URL is printed in the terminal.
+
+  To run always-on in the background:
+    screen -S mirror sh contribute.sh     # then Ctrl+A D to detach
+    # or
+    nohup sh contribute.sh > mirror.log 2>&1 &
+
+  Pre-set your ngrok token to skip the prompt:
+    NGROK_AUTHTOKEN=your_token sh contribute.sh
+
+  Point to a backup registry:
+    ROOT_SERVER=http://your-pi:8090 sh contribute.sh
+
+  GitHub Codespaces (free, no machine needed):
+    1. Fork the repo on GitHub
+    2. Open a Codespace on your fork
+    3. Run: sh codespaces.sh
+    (Codespaces gives 60 free hours/month)
 
 
 ROOT SERVER (for your Pi)
@@ -70,12 +108,13 @@ PROJECT STRUCTURE
 -----------------
 index.html           Launcher — open this to use the app
 contribute.sh        One-command mirror hosting
+codespaces.sh        Codespaces entry point (git pull + contribute)
 
 client/              Browser client code
   discord/           Discord client (HTML, JS, CSS)
   insta/             Instagram client (HTML, JS, CSS)
   shared/            Shared encryption & validation
-  faq.html           FAQ & security info
+  faq.html           FAQ & security info (also embedded in launcher)
 
 server/              Server-side code
   worker.js          CORS proxy (Cloudflare Worker)
