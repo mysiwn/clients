@@ -1,24 +1,42 @@
-#!/bin/bash
+#!/bin/sh
 # ══════════════════════════════════════════════════════════
-# codespaces.sh — GitHub Codespaces entry point
+# codespaces.sh — Entry point for GitHub Codespaces / Alpine
 #
-# Run: bash codespaces.sh
+# Run: sh codespaces.sh
 #
 # This script:
-#   1. Pulls the latest changes from GitHub (main branch)
-#   2. Hands off to contribute.sh
+#   1. Installs git if missing (apk/apt/brew auto-detected)
+#   2. Pulls the latest changes from GitHub (main branch)
+#   3. Hands off to contribute.sh
 # ══════════════════════════════════════════════════════════
 
-set -euo pipefail
+set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"
-echo "║  Codespaces — Updating from GitHub           ║"
+echo "║  Updating from GitHub                        ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
+
+# ── 0. Ensure git is available ────────────────────────────
+if ! command -v git >/dev/null 2>&1; then
+    echo "[*] git not found — installing..."
+    if command -v apk >/dev/null 2>&1; then
+        apk add --no-cache git
+    elif command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && apt-get install -y -qq git
+    elif command -v brew >/dev/null 2>&1; then
+        brew install git
+    else
+        echo "[!] Cannot install git — no supported package manager found."
+        echo "    Install git manually and re-run."
+        exit 1
+    fi
+    echo "[OK] git installed"
+fi
 
 # ── 1. Pull latest from GitHub ────────────────────────────
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
@@ -44,4 +62,4 @@ fi
 echo ""
 
 # ── 2. Hand off to contribute.sh ─────────────────────────
-exec bash "$SCRIPT_DIR/contribute.sh"
+exec sh "$SCRIPT_DIR/contribute.sh"

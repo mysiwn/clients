@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 # ══════════════════════════════════════════════════════════
 # contribute.sh — One-command mirror contribution
 #
-# Run: bash contribute.sh
+# Run: sh contribute.sh
 #
 # This script:
 #   1. Checks/installs Node.js, dependencies, Chromium, ngrok
@@ -12,7 +12,7 @@
 #   5. Heartbeats every 25 min to stay listed
 # ══════════════════════════════════════════════════════════
 
-set -euo pipefail
+set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -33,7 +33,7 @@ echo ""
 
 # ── 1. Check Node.js ──────────────────────────────────────
 check_node() {
-    if command -v node &>/dev/null; then
+    if command -v node >/dev/null 2>&1; then
         NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
         if [ "$NODE_VER" -ge 18 ]; then
             echo "[OK] Node.js $(node -v) detected"
@@ -48,13 +48,44 @@ check_node() {
 }
 
 install_node() {
+    # Alpine Linux
+    if command -v apk >/dev/null 2>&1; then
+        echo "[*] Installing Node.js via apk..."
+        apk add --no-cache nodejs npm
+        echo "[OK] Node.js $(node -v) installed via apk"
+        return 0
+    fi
+
+    # Debian/Ubuntu
+    if command -v apt-get >/dev/null 2>&1; then
+        echo "[*] Installing Node.js via apt..."
+        apt-get update -qq
+        apt-get install -y -qq nodejs npm
+        echo "[OK] Node.js $(node -v) installed via apt"
+        return 0
+    fi
+
+    # macOS (Homebrew)
+    if command -v brew >/dev/null 2>&1; then
+        echo "[*] Installing Node.js via Homebrew..."
+        brew install node
+        echo "[OK] Node.js $(node -v) installed via brew"
+        return 0
+    fi
+
+    # Fallback: nvm (requires bash)
     echo "[*] Installing Node.js via nvm..."
-    if ! command -v curl &>/dev/null; then
+    if ! command -v curl >/dev/null 2>&1; then
         echo "[!] curl not found. Install curl first."
         exit 1
     fi
+    if ! command -v bash >/dev/null 2>&1; then
+        echo "[!] No supported package manager found. Install Node.js 18+ manually."
+        exit 1
+    fi
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-    export NVM_DIR="$HOME/.nvm"
+    NVM_DIR="$HOME/.nvm"
+    export NVM_DIR
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     nvm install 20
     nvm use 20
@@ -68,18 +99,26 @@ fi
 # ── 2. npm install ────────────────────────────────────────
 echo ""
 echo "[*] Installing npm dependencies..."
-(cd "$SCRIPT_DIR/server" && npm install --production 2>&1 | tail -3)
+# Run in subshell; capture last 3 lines manually without pipefail risk
+cd "$SCRIPT_DIR/server" && npm install --production 2>&1 | tail -3
+cd "$SCRIPT_DIR"
 echo "[OK] Dependencies installed"
 
 # ── 3. Install Chromium via Playwright ────────────────────
 echo ""
 echo "[*] Installing Chromium browser..."
-(cd "$SCRIPT_DIR/server" && npx playwright install chromium 2>&1 | tail -5)
+# Alpine needs Playwright deps installed via apk
+if command -v apk >/dev/null 2>&1; then
+    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont >/dev/null 2>&1 || true
+    export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:-/usr/bin/chromium-browser}"
+fi
+cd "$SCRIPT_DIR/server" && npx playwright install chromium 2>&1 | tail -5
+cd "$SCRIPT_DIR"
 echo "[OK] Chromium installed"
 
 # ── 4. Check/install ngrok ────────────────────────────────
 install_ngrok() {
-    if command -v ngrok &>/dev/null; then
+    if command -v ngrok >/dev/null 2>&1; then
         echo "[OK] ngrok already installed ($(ngrok version 2>&1 | head -1))"
         return 0
     fi
@@ -97,10 +136,15 @@ install_ngrok() {
     esac
 
     NGROK_URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-${OS}-${ARCH}.tgz"
-    curl -sL "$NGROK_URL" | tar xz -C /usr/local/bin/ 2>/dev/null || \
-    ( mkdir -p "$HOME/.local/bin" && curl -sL "$NGROK_URL" | tar xz -C "$HOME/.local/bin/" && export PATH="$HOME/.local/bin:$PATH" )
+    if curl -sL "$NGROK_URL" | tar xz -C /usr/local/bin/ 2>/dev/null; then
+        :
+    else
+        mkdir -p "$HOME/.local/bin"
+        curl -sL "$NGROK_URL" | tar xz -C "$HOME/.local/bin/"
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
 
-    if command -v ngrok &>/dev/null; then
+    if command -v ngrok >/dev/null 2>&1; then
         echo "[OK] ngrok installed"
     else
         echo "[!] ngrok installation failed — install manually from https://ngrok.com/download"
@@ -116,7 +160,6 @@ echo ""
 echo "[*] Checking ngrok authentication..."
 
 NGROK_AUTHED=false
-# Try to verify ngrok auth by checking config for authtoken
 if ngrok config check 2>/dev/null | grep -q "valid"; then
     NGROK_AUTHED=true
 elif ngrok diagnose 2>/dev/null | grep -qi "authtoken.*ok"; then
@@ -133,7 +176,8 @@ if [ "$NGROK_AUTHED" = false ]; then
     echo "    Sign up at https://dashboard.ngrok.com/signup"
     echo "    Then copy your authtoken from https://dashboard.ngrok.com/get-started/your-authtoken"
     echo ""
-    read -p "    Enter your ngrok authtoken: " NGROK_TOKEN
+    printf "    Enter your ngrok authtoken: "
+    read -r NGROK_TOKEN
     if [ -z "$NGROK_TOKEN" ]; then
         echo "[!] No token provided. Cannot continue without ngrok auth."
         exit 1
@@ -168,7 +212,6 @@ if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     exit 1
 fi
 
-# Verify server is responding
 if ! curl -s "http://localhost:${PORT}/status" >/dev/null 2>&1; then
     echo "[!] Server started but not responding to health check"
     exit 1
@@ -177,17 +220,19 @@ echo "[OK] Server running (PID $SERVER_PID)"
 
 # ── 7. Start ngrok tunnel ────────────────────────────────
 echo "[*] Starting ngrok tunnel..."
-ngrok http "$PORT" --log=stdout --log-format=json > /tmp/ngrok-contribute-$$.log 2>&1 &
+ngrok http "$PORT" --log=stdout --log-format=json > "/tmp/ngrok-contribute-$$.log" 2>&1 &
 NGROK_PID=$!
 
 # ── 8. Wait for tunnel URL ───────────────────────────────
 TUNNEL_URL=""
-for i in $(seq 1 20); do
+i=0
+while [ "$i" -lt 20 ]; do
     sleep 1
     TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
         | grep -o '"public_url":"https://[^"]*"' | head -1 \
         | sed 's/"public_url":"//;s/"//')
     [ -n "$TUNNEL_URL" ] && break
+    i=$((i + 1))
 done
 
 if [ -z "$TUNNEL_URL" ]; then
@@ -197,10 +242,10 @@ if [ -z "$TUNNEL_URL" ]; then
 fi
 
 # Validate tunnel URL starts with https
-if [[ ! "$TUNNEL_URL" =~ ^https:// ]]; then
-    echo "[!] Invalid tunnel URL: $TUNNEL_URL"
-    exit 1
-fi
+case "$TUNNEL_URL" in
+    https://*) ;;
+    *) echo "[!] Invalid tunnel URL: $TUNNEL_URL"; exit 1 ;;
+esac
 
 echo "[OK] Tunnel: $TUNNEL_URL"
 
@@ -219,7 +264,6 @@ else
     echo "    Your mirror is still running — users can connect directly with the URL above."
 fi
 
-# Also register with root server if configured
 if [ -n "$ROOT_SERVER" ]; then
     ROOT_RESP=$(curl -s -X POST "$ROOT_SERVER/mirrors/contribute" \
         -H "Content-Type: application/json" \
@@ -248,7 +292,7 @@ echo ""
 
 # ── 11. Heartbeat loop ───────────────────────────────────
 heartbeat() {
-    local failures=0
+    failures=0
     while true; do
         sleep "$HEARTBEAT_INTERVAL"
         RESP=$(curl -s -X POST "$PROXY_BASE/mirrors/contribute" \
@@ -265,7 +309,6 @@ heartbeat() {
                 return
             fi
         fi
-        # Also heartbeat to root server
         if [ -n "${ROOT_SERVER:-}" ]; then
             curl -s -X POST "$ROOT_SERVER/mirrors/contribute" \
                 -H "Content-Type: application/json" \
@@ -277,6 +320,5 @@ heartbeat() {
 heartbeat &
 HEARTBEAT_PID=$!
 
-# Wait for server to exit
 wait $SERVER_PID
 cleanup
