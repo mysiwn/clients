@@ -5,81 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>School</title>
     <style>
-        *, *::before, *::after { box-sizing: border-box; }
-        body {
-            margin: 0;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #1a1a2e;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: #e0e0e0;
-        }
-        .launcher-card {
-            background: #16213e;
-            border: 1px solid #0f3460;
-            border-radius: 16px;
-            padding: 48px 40px 36px;
-            text-align: center;
-            box-shadow: 0 12px 48px rgba(0,0,0,0.4);
-            min-width: 340px;
-        }
-        .launcher-title {
-            margin: 0 0 4px;
-            font-size: 2rem;
-            color: #fff;
-            letter-spacing: 0.02em;
-        }
-        .launcher-subtitle {
-            margin: 0 0 28px;
-            color: #8a8fa8;
-            font-size: 0.9rem;
-        }
-        .launcher-buttons {
-            display: flex;
-            gap: 14px;
-        }
-        .launcher-buttons button {
-            flex: 1;
-            padding: 14px 20px;
-            border: none;
-            border-radius: 10px;
-            color: #fff;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            font-family: inherit;
-            transition: transform 0.1s, box-shadow 0.15s;
-        }
-        .launcher-buttons button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-        }
-        .launcher-buttons button:active { transform: translateY(0); }
-        .btn-discord { background: #5865f2; }
-        .btn-discord:hover { background: #4752c4; }
-        .btn-insta { background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
-        .btn-insta:hover { filter: brightness(1.1); }
-        .launcher-note {
-            margin: 24px 0 0;
-            font-size: 0.75rem;
-            color: #555b70;
-        }
+        body { margin: 40px auto; max-width: 320px; font-family: sans-serif; }
+        button { display: block; width: 100%; margin: 8px 0; padding: 10px; font-size: 1rem; cursor: pointer; }
+        .btn-clear { background: none; color: #999; border: 1px solid #ccc; font-size: 0.85rem; }
+        small { color: #999; }
     </style>
 </head>
 <body>
-    <div id="launcher">
-        <div class="launcher-card">
-            <h1 class="launcher-title">School</h1>
-            <p class="launcher-subtitle">Choose a platform</p>
-            <div class="launcher-buttons">
-                <button class="btn-discord" onclick="launchClient('discord')">Discord</button>
-                <button class="btn-insta" onclick="launchClient('insta')">Instagram</button>
-            </div>
-            <p class="launcher-note">Reload page to switch clients</p>
-        </div>
-    </div>
+    <h2>School</h2>
+    <button onclick="launchClient('discord')">Discord</button>
+    <button onclick="launchClient('insta')">Instagram</button>
+    <button class="btn-clear" onclick="clearData()">Clear All Data</button>
+    <small>Reload to switch clients</small>
 
 <script type="text/plain" id="src-security-js">
 // ══════════════════════════════════════════════════════════
@@ -2033,8 +1970,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
         </div>
     </div>
 
-    <script src="../shared/security.js"></script>
-    <script src="index.js"></script>
 </script>
 
 <script type="text/plain" id="src-discord-js">
@@ -4033,8 +3968,6 @@ init();
         </div>
     </div>
 
-    <script src="../shared/security.js"></script>
-    <script src="index.js"></script>
 </script>
 
 <script type="text/plain" id="src-insta-js">
@@ -5592,6 +5525,71 @@ function launchClient(name) {
     document.open();
     document.write(doc);
     document.close();
+}
+
+async function clearData() {
+    if (!confirm(
+        'Clear all stored data for Discord and Instagram?\n\n' +
+        'This will log you out of both clients and delete all saved credentials, sessions, and settings.'
+    )) return;
+
+    try {
+        const secCode = document.getElementById('src-security-js').textContent;
+        const { SecureStorage } = new Function(secCode + '\nreturn { SecureStorage };')();
+
+        const discordVault = new SecureStorage('discord');
+        const instaVault   = new SecureStorage('instagram');
+        const hasDiscord   = discordVault.hasVault();
+        const hasInsta     = instaVault.hasVault();
+
+        if (hasDiscord || hasInsta) {
+            const pin = prompt(
+                'Enter your vault PIN to also log out from Discord/Instagram servers.\n' +
+                '(Cancel to skip server logout and only clear local data.)'
+            );
+
+            if (pin) {
+                if (hasDiscord) {
+                    try {
+                        await discordVault.unlock(pin);
+                        const cfgRaw = await discordVault.getItem('client_config');
+                        const cfg    = cfgRaw ? JSON.parse(cfgRaw) : {};
+                        const token  = await discordVault.getItem('user_token');
+                        if (token && cfg.proxyBase) {
+                            await fetch(
+                                cfg.proxyBase + '/https://discord.com/api/v9/auth/logout',
+                                { method: 'POST', headers: { Authorization: token } }
+                            ).catch(() => {});
+                        }
+                    } catch (_) {}
+                }
+                if (hasInsta) {
+                    try {
+                        await instaVault.unlock(pin);
+                        const cfgRaw = await instaVault.getItem('ig_client_config');
+                        const cfg    = cfgRaw ? JSON.parse(cfgRaw) : {};
+                        const sid    = await instaVault.getItem('ig_session_id');
+                        const csrf   = await instaVault.getItem('ig_csrf_token') || '';
+                        if (sid && cfg.proxyBase) {
+                            await fetch(
+                                cfg.proxyBase + '/https://i.instagram.com/api/v1/accounts/logout/',
+                                { method: 'POST', headers: { 'X-CSRFToken': csrf, 'X-IG-Session': sid } }
+                            ).catch(() => {});
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            discordVault.destroy();
+            instaVault.destroy();
+        }
+    } catch (e) {
+        console.warn('[clearData] vault error:', e);
+    }
+
+    ['ig_playwright_url'].forEach(k => localStorage.removeItem(k));
+    alert('All data cleared. Reloading...');
+    location.reload();
 }
 </script>
 </body>
