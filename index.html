@@ -4147,7 +4147,6 @@ function igHeaders() {
     const headers = {
         'X-CSRFToken': csrfToken,
         'X-IG-App-ID': IG_APP_ID,
-        'Content-Type': 'application/x-www-form-urlencoded'
     };
     // Use full cookies when available (from Playwright capture), otherwise fallback
     if (fullCookies) {
@@ -4596,6 +4595,8 @@ async function igApi(endpoint, options = {}) {
         headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify(options.json);
         delete options.json;
+    } else if (options.body && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
     }
     let res;
     try {
@@ -5499,7 +5500,7 @@ function launchClient(name) {
     var title = name === 'discord' ? 'Local Discord Client' : 'Local Instagram Client';
 
     var cdnScript = name === 'discord'
-        ? '<script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous" integrity="sha384-Fal8sW9VBc+7VZvhIbOqWfzQnJTO+KzSlPdretEPc3iJq4lZ5ADywx29gFOBRWVK"><\/script>'
+        ? '<script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous"><\/script>'
         : '';
 
     var doc = '<!DOCTYPE html>\n<html lang="en">\n<head>\n'

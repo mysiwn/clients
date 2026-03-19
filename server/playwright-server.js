@@ -427,17 +427,41 @@ function setupInstagramCapture(svc, pageIndex) {
     const entry = svc.pages[pageIndex];
     if (!entry) return;
     let polling = false;
-    entry.page.on('framenavigated', async () => {
-        if (svc.tokenCaptured || polling) return;
-        const url = entry.page.url();
-        if (url.includes('/login') || url.includes('/challenge') || url.includes('/accounts/')) return;
-        polling = true;
+
+    // Periodically dismiss Instagram post-login dialogs ("Save login info",
+    // "Turn on notifications") so the browser navigates to the home feed
+    // and the session can be captured automatically.
+    const dialogDismisser = setInterval(async () => {
+        if (svc.tokenCaptured) { clearInterval(dialogDismisser); return; }
+        try {
+            const page = entry.page;
+            // "Save login info" — click "Not Now"
+            const notNow = page.locator('button:has-text("Not Now"), button:has-text("Not now")').first();
+            if (await notNow.isVisible({ timeout: 500 }).catch(() => false)) {
+                await notNow.click();
+                console.log('[instagram] Dismissed "Save login info" dialog');
+                return;
+            }
+            // "Turn on notifications" — click "Not Now"
+            const notNow2 = page.locator('[role="dialog"] button:has-text("Not Now"), [role="dialog"] button:has-text("Not now")').first();
+            if (await notNow2.isVisible({ timeout: 500 }).catch(() => false)) {
+                await notNow2.click();
+                console.log('[instagram] Dismissed notification dialog');
+            }
+        } catch (_) {}
+    }, 1500);
+
+    let capturePending = false;
+    async function tryCapture() {
+        if (svc.tokenCaptured || capturePending) return;
+        capturePending = true;
         try {
             await entry.page.waitForTimeout(1500);
             const cookies = await svc.context.cookies('https://www.instagram.com');
             const sessionCookie = cookies.find(c => c.name === 'sessionid');
             const csrfCookie    = cookies.find(c => c.name === 'csrftoken');
             if (sessionCookie?.value) {
+                clearInterval(dialogDismisser);
                 svc.tokenCaptured = true;
                 const fullCookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
                 svc.capturedSession = {
@@ -451,7 +475,14 @@ function setupInstagramCapture(svc, pageIndex) {
                 setTimeout(() => closeBrowser(svc, 'instagram'), 3000);
             }
         } catch (_) {}
-        polling = false;
+        capturePending = false;
+    }
+
+    entry.page.on('framenavigated', async () => {
+        if (svc.tokenCaptured) return;
+        const url = entry.page.url();
+        if (url.includes('/login') || url.includes('/challenge')) return;
+        await tryCapture();
     });
 }
 
