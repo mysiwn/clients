@@ -8,6 +8,8 @@ const UPLOAD_TIMEOUT_MS = 30000;
 const MEDIA_TIMEOUT_MS = 10000;
 const MAX_GATEWAY_RECONNECTS = 10;
 const E2E_PBKDF2_ITERATIONS = 600000;
+const GATEWAY_INTENTS = 4609; // GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES | MESSAGE_CONTENT
+const MAX_RECONNECT_DELAY = 30000;
 
 // ── Vault (SecureStorage) ──────────────────────────────────
 const vault = new SecureStorage('discord');
@@ -727,12 +729,12 @@ function connectGateway() {
 
     ws.onopen = () => { gatewayReconnectDelay = 1000; };
     ws.onclose = () => {
-        clearInterval(gatewayHeartbeat); gatewayHeartbeat = null; gatewayReady = false;
+        clearInterval(gatewayHeartbeat); gatewayHeartbeat = null; gatewayReady = false; typingUsers = {}; renderTypingIndicator();
         setGatewayStatus('disconnected', 'Disconnected \u2014 using polling');
         if (gateway === ws && userToken) {
             startAutoRefresh();
             setTimeout(() => { if (userToken) connectGateway(); }, gatewayReconnectDelay);
-            gatewayReconnectDelay = Math.min(gatewayReconnectDelay * 2, 30000);
+            gatewayReconnectDelay = Math.min(gatewayReconnectDelay * 2, MAX_RECONNECT_DELAY);
         }
     };
     ws.onerror = (e) => console.error('[gateway] WebSocket error:', e);
@@ -746,7 +748,7 @@ function connectGateway() {
                 if (gatewaySessionId && gatewaySeq !== null) {
                     ws.send(JSON.stringify({ op: 6, d: { token: userToken, session_id: gatewaySessionId, seq: gatewaySeq } }));
                 } else {
-                    ws.send(JSON.stringify({ op: 2, d: { token: userToken, intents: 4609, properties: { os: 'browser', browser: 'chrome', device: '' } } }));
+                    ws.send(JSON.stringify({ op: 2, d: { token: userToken, intents: GATEWAY_INTENTS, properties: { os: 'browser', browser: 'chrome', device: '' } } }));
                 }
                 break;
             case 0: handleGatewayDispatch(msg.t, msg.d); break;
@@ -1253,6 +1255,15 @@ self.addEventListener('fetch', event => {
     if (url.pathname === '/image') { event.respondWith(caches.open('discord-media-v1').then(cache => cache.match(event.request).then(cached => { if (cached) return cached; return fetch(event.request).then(r => { if (r.ok) cache.put(event.request, r.clone()); return r; }); }))); return; }
 });`;
 if ('serviceWorker' in navigator) { const swBlob = new Blob([swCode], { type: 'application/javascript' }); const swUrl = URL.createObjectURL(swBlob); navigator.serviceWorker.register(swUrl, { scope: './' }).catch((e) => { console.warn('[discord] SW registration failed:', e); }); }
+
+// ── Cleanup on unload ─────────────────────────────────────
+window.addEventListener('beforeunload', () => {
+    clearBlobUrls();
+    clearTimeout(refreshTimeout);
+    clearInterval(gatewayHeartbeat);
+    if (gateway) { try { gateway.close(); } catch (_) {} }
+    if (browserWs) { try { browserWs.close(); } catch (_) {} }
+});
 
 // ── Start ─────────────────────────────────────────────────
 settingRefresh.value = settings.refreshInterval;
