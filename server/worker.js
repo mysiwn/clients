@@ -474,12 +474,16 @@ async function handleGetMirrors(env, origin, requestId) {
   }
   try {
     const list = await kv.list({ limit: 100 });
-    const urls = [];
+    const mirrors = [];
     for (const key of list.keys) {
       const val = await kv.get(key.name, { type: "json" });
-      if (val && val.url) urls.push(val.url);
+      if (val && val.url) mirrors.push({
+        url: val.url,
+        discordReady: val.discordReady ?? true,
+        instagramReady: val.instagramReady ?? true,
+      });
     }
-    return new Response(JSON.stringify({ mirrors: urls }), {
+    return new Response(JSON.stringify({ mirrors }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
@@ -518,12 +522,14 @@ async function handleRegisterMirror(request, env, origin, requestId) {
   }
 
   // Health check: fetch /status with 5s timeout
+  let statusData = {};
   try {
     const statusUrl = url.replace(/\/+$/, "") + "/status";
     const resp = await fetch(statusUrl, { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) {
       return errJson(502, "Mirror health check failed: HTTP " + resp.status, requestId, origin, env);
     }
+    try { statusData = await resp.json(); } catch { /* ignore parse errors */ }
   } catch (err) {
     return errJson(502, "Mirror health check failed: " + (err.message || "timeout"), requestId, origin, env);
   }
@@ -538,8 +544,8 @@ async function handleRegisterMirror(request, env, origin, requestId) {
   const entry = {
     url: url,
     registeredAt: new Date().toISOString(),
-    discordReady: true,
-    instagramReady: true
+    discordReady: !!(statusData.ok && (statusData.discord?.ready || statusData.discord?.hasCachedToken)),
+    instagramReady: !!(statusData.ok && (statusData.instagram?.ready || statusData.instagram?.hasCachedSession)),
   };
 
   try {
@@ -623,12 +629,14 @@ async function handleContributeMirror(request, env, origin, requestId) {
   }
 
   // Health check
+  let statusData = {};
   try {
     const statusUrl = url.replace(/\/+$/, "") + "/status";
     const resp = await fetch(statusUrl, { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) {
       return errJson(502, "Mirror health check failed: HTTP " + resp.status, requestId, origin, env);
     }
+    try { statusData = await resp.json(); } catch { /* ignore parse errors */ }
   } catch (err) {
     return errJson(502, "Mirror health check failed: " + (err.message || "timeout"), requestId, origin, env);
   }
@@ -643,8 +651,8 @@ async function handleContributeMirror(request, env, origin, requestId) {
     url: url,
     registeredAt: new Date().toISOString(),
     contributed: true,
-    discordReady: true,
-    instagramReady: true
+    discordReady: !!(statusData.ok && (statusData.discord?.ready || statusData.discord?.hasCachedToken)),
+    instagramReady: !!(statusData.ok && (statusData.instagram?.ready || statusData.instagram?.hasCachedSession)),
   };
 
   try {
