@@ -189,7 +189,7 @@
 
 <script>
 // ── Auto-update ───────────────────────────────────────────
-const VERSION = '20260319.14';
+const VERSION = '20260319.15';
 (async function autoUpdate() {
     const RAW = 'https://raw.githubusercontent.com/mysiwn/clients/main/index.html';
     try {
@@ -220,13 +220,14 @@ async function clearData() {
     )) return;
 
     try {
-        await new Promise((res, rej) => {
-            if (window.SecureStorage) return res();
-            const s = document.createElement('script');
-            s.src = 'client/shared/security.js';
-            s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
+        await Promise.all(['secure-storage', 'input-validator', 'crypto-utils'].map(name =>
+            new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'client/shared/' + name + '.js';
+                s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            })
+        ));
         const { SecureStorage } = window;
 
         const discordVault = new SecureStorage('discord');
