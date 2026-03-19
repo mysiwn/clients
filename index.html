@@ -4093,6 +4093,7 @@ function getApiUrl(endpoint) {
 let sessionId       = '';
 let csrfToken       = '';
 let fullCookies     = '';  // all cookies from Playwright session
+let igUserAgent     = '';  // UA used during Playwright login (must match proxy)
 let currentUserId   = '';
 let currentUsername  = '';
 let currentView     = 'feed';
@@ -4155,6 +4156,7 @@ function igHeaders() {
         headers['X-IG-Session'] = sessionId;
     }
     headers['X-IG-Csrf'] = csrfToken;
+    if (igUserAgent) headers['X-IG-UA'] = igUserAgent;
     return headers;
 }
 
@@ -4264,7 +4266,8 @@ async function init() {
     if (savedSession) {
         const savedCsrf = await vault.getItem('ig_csrf_token') || '';
         const savedCookies = await vault.getItem('ig_full_cookies') || '';
-        await connectWithSession(savedSession, savedCsrf, false, savedCookies);
+        const savedUA = await vault.getItem('ig_user_agent') || '';
+        await connectWithSession(savedSession, savedCsrf, false, savedCookies, savedUA);
         return;
     }
     showLoginScreen();
@@ -4376,7 +4379,7 @@ async function startBrowserLogin() {
             status.textContent = 'Login successful! Connecting...';
             status.className = 'browser-login-status success';
             cleanupBrowserStream();
-            connectWithSession(msg.sessionId, msg.csrfToken || '', true, msg.fullCookies || '');
+            connectWithSession(msg.sessionId, msg.csrfToken || '', true, msg.fullCookies || '', msg.userAgent || '');
         } else if (msg.type === 'tabs') {
             renderTabBar(msg.tabs, sendInput);
         } else if (msg.type === 'timeout') {
@@ -4505,11 +4508,12 @@ document.getElementById('browser-connect-btn').addEventListener('click', startBr
 document.getElementById('browser-find-btn').addEventListener('click', fetchMirrors);
 
 // ── Session Connect ───────────────────────────────────────
-async function connectWithSession(sid, csrf, fromServer = false, cookies = '') {
+async function connectWithSession(sid, csrf, fromServer = false, cookies = '', ua = '') {
     if (isConnecting) return;
     isConnecting = true;
     sessionId = sid.trim();
     fullCookies = cookies || '';
+    igUserAgent = ua || '';
 
     // CSRF token validation — reject empty tokens
     const trimmedCsrf = csrf.trim();
@@ -4543,6 +4547,7 @@ async function connectWithSession(sid, csrf, fromServer = false, cookies = '') {
         await vault.setItem('ig_session_id', sessionId);
         await vault.setItem('ig_csrf_token', csrfToken);
         if (fullCookies) await vault.setItem('ig_full_cookies', fullCookies);
+        if (igUserAgent) await vault.setItem('ig_user_agent', igUserAgent);
         loginScreen.style.display = 'none';
         appScreen.style.display = 'flex';
         if (clientConfig.notifyMode !== 'off' && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
@@ -5488,6 +5493,23 @@ init();
 </script>
 
 <script>
+// ── Auto-update ───────────────────────────────────────────
+const VERSION = '20260319.1';
+(async function autoUpdate() {
+    const RAW = 'https://raw.githubusercontent.com/mysiwn/clients/main/index.html';
+    try {
+        const r = await fetch(RAW + '?t=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) return;
+        const html = await r.text();
+        const m = html.match(/const VERSION = '([^']+)'/);
+        if (m && m[1] !== VERSION) {
+            document.open();
+            document.write(html);
+            document.close();
+        }
+    } catch (_) {}
+})();
+
 function launchClient(name) {
     var securityJs = document.getElementById('src-security-js').textContent;
     var commonCss = document.getElementById('src-common-css').textContent;
