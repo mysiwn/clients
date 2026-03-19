@@ -176,10 +176,10 @@ wss.on('connection', (ws, req) => {
         return;
     }
 
-    // Client can set timeout via query param
+    // Client can set timeout via query param (clamped to 0-3600)
     const clientTimeout = parseInt(parsed.searchParams.get('timeout'));
     if (!isNaN(clientTimeout) && clientTimeout >= 0) {
-        svc.timeoutSeconds = clientTimeout;
+        svc.timeoutSeconds = Math.min(clientTimeout, 3600);
     }
 
     svc.clients.add(ws);
@@ -189,11 +189,16 @@ wss.on('connection', (ws, req) => {
     ws.on('close', () => {
         svc.clients.delete(ws);
         console.log(`[${svcName}] Client disconnected (${svc.clients.size} remaining)`);
+        if (svc.clients.size === 0) {
+            stopScreenshots(svc);
+            if (svc.timeoutTimer) { clearTimeout(svc.timeoutTimer); svc.timeoutTimer = null; }
+        }
     });
 
     ws.on('error', () => svc.clients.delete(ws));
 
     ws.on('message', async (raw) => {
+        if (raw.length > 50000) return; // reject oversized messages
         let msg;
         try { msg = JSON.parse(raw); } catch (_) { return; }
         touchActivity(svc, svcName);
@@ -246,7 +251,7 @@ wss.on('connection', (ws, req) => {
             }
             if (idx >= 0 && idx < svc.pages.length) {
                 const removed = svc.pages.splice(idx, 1)[0];
-                try { await removed.page.close(); } catch (_) {}
+                try { removed.page.removeAllListeners(); await removed.page.close(); } catch (_) {}
                 if (svc.activeTabIndex >= svc.pages.length) svc.activeTabIndex = svc.pages.length - 1;
                 broadcast(svc, { type: 'tabs', tabs: getTabList(svc) });
                 console.log(`[${svcName}] Tab closed: ${removed.id}`);
@@ -257,7 +262,16 @@ wss.on('connection', (ws, req) => {
         if (msg.type === 'navigate') {
             const page = getActivePage(svc);
             if (page && msg.url) {
-                try { await page.goto(msg.url, { waitUntil: 'domcontentloaded' }); } catch (_) {}
+                try {
+                    const parsed = new URL(msg.url);
+                    if (!['http:', 'https:'].includes(parsed.protocol)) {
+                        send(ws, { type: 'error', message: 'Invalid URL protocol' });
+                        return;
+                    }
+                    await page.goto(msg.url, { waitUntil: 'domcontentloaded' });
+                } catch (e) {
+                    if (e instanceof TypeError) send(ws, { type: 'error', message: 'Invalid URL' });
+                }
             }
             return;
         }

@@ -48,8 +48,24 @@ function loadMirrors() {
     }
 }
 
-// Persist mirrors to disk
+// Persist mirrors to disk (debounced to avoid excessive I/O)
+let _saveTimeout = null;
 function saveMirrors() {
+    if (_saveTimeout) return;
+    _saveTimeout = setTimeout(() => {
+        _saveTimeout = null;
+        try {
+            const data = [...mirrors.values()];
+            fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+        } catch (e) {
+            console.warn('Failed to save mirrors to disk:', e.message);
+        }
+    }, 1000);
+}
+
+// Force immediate save (for shutdown)
+function saveMirrorsSync() {
+    if (_saveTimeout) { clearTimeout(_saveTimeout); _saveTimeout = null; }
     try {
         const data = [...mirrors.values()];
         fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
@@ -80,14 +96,14 @@ async function checkMirrorHealth(url) {
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
         const statusUrl = url.replace(/\/+$/, '') + '/status';
-        const res = await fetch(statusUrl, { signal: controller.signal });
-        clearTimeout(timeout);
+        const res = await fetch(statusUrl, { signal: controller.signal, redirect: 'error' });
         if (!res.ok) return false;
         const data = await res.json();
         return data.ok === true;
     } catch {
-        clearTimeout(timeout);
         return false;
+    } finally {
+        clearTimeout(timeout);
     }
 }
 
@@ -247,18 +263,27 @@ const server = http.createServer(async (req, res) => {
     jsonResponse(res, 404, { error: 'Not found' });
 });
 
-// ── Background: periodically health-check all mirrors ───
+// ── Background: periodically health-check all mirrors (batched) ──
 setInterval(async () => {
     const now = Date.now();
-    for (const [url, entry] of mirrors) {
-        if (entry.expiresAt <= now) continue;
-        const healthy = await checkMirrorHealth(url);
-        if (!healthy) {
-            console.log(`[health] Mirror offline: ${url}`);
-            mirrors.delete(url);
+    const entries = [...mirrors].filter(([, e]) => e.expiresAt > now);
+    const BATCH_SIZE = 5;
+    let removed = 0;
+    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        const batch = entries.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(batch.map(async ([url]) => {
+            const healthy = await checkMirrorHealth(url);
+            return { url, healthy };
+        }));
+        for (const { url, healthy } of results) {
+            if (!healthy) {
+                console.log(`[health] Mirror offline: ${url}`);
+                mirrors.delete(url);
+                removed++;
+            }
         }
     }
-    saveMirrors();
+    if (removed > 0) saveMirrors();
 }, 5 * 60 * 1000); // every 5 minutes
 
 // ── Start ───────────────────────────────────────────────
@@ -275,6 +300,6 @@ server.listen(PORT, () => {
 
 process.on('SIGINT', () => {
     console.log('\nSaving mirrors and shutting down...');
-    saveMirrors();
+    saveMirrorsSync();
     process.exit(0);
 });

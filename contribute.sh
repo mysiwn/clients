@@ -12,7 +12,7 @@
 #   5. Heartbeats every 25 min to stay listed
 # ══════════════════════════════════════════════════════════
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -21,6 +21,9 @@ PROXY_BASE="https://cors-proxy.mysiwn.workers.dev"
 ROOT_SERVER="${ROOT_SERVER:-}"  # Optional: http://your-pi:8090
 PORT="${PORT:-3000}"
 HEARTBEAT_INTERVAL=1500  # 25 minutes in seconds
+SERVER_PID=""
+NGROK_PID=""
+HEARTBEAT_PID=""
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"
@@ -148,19 +151,26 @@ echo "[*] Starting Playwright server on port $PORT..."
 cleanup() {
     echo ""
     echo "Shutting down..."
-    [ -n "$HEARTBEAT_PID" ] && kill $HEARTBEAT_PID 2>/dev/null
-    [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null
-    [ -n "$NGROK_PID" ] && kill $NGROK_PID 2>/dev/null
+    [ -n "${HEARTBEAT_PID:-}" ] && kill "$HEARTBEAT_PID" 2>/dev/null || true
+    [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null || true
+    [ -n "${NGROK_PID:-}" ] && kill "$NGROK_PID" 2>/dev/null || true
+    wait 2>/dev/null || true
     exit 0
 }
-trap cleanup SIGINT SIGTERM
+trap cleanup EXIT INT TERM
 
 node server/playwright-server.js &
 SERVER_PID=$!
 
-sleep 2
-if ! kill -0 $SERVER_PID 2>/dev/null; then
+sleep 3
+if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "[!] Server failed to start"
+    exit 1
+fi
+
+# Verify server is responding
+if ! curl -s "http://localhost:${PORT}/status" >/dev/null 2>&1; then
+    echo "[!] Server started but not responding to health check"
     exit 1
 fi
 echo "[OK] Server running (PID $SERVER_PID)"
@@ -183,7 +193,13 @@ done
 if [ -z "$TUNNEL_URL" ]; then
     echo "[!] Could not get ngrok tunnel URL."
     echo "    Check that ngrok is authenticated: ngrok config add-authtoken <token>"
-    cleanup
+    exit 1
+fi
+
+# Validate tunnel URL starts with https
+if [[ ! "$TUNNEL_URL" =~ ^https:// ]]; then
+    echo "[!] Invalid tunnel URL: $TUNNEL_URL"
+    exit 1
 fi
 
 echo "[OK] Tunnel: $TUNNEL_URL"
@@ -232,18 +248,25 @@ echo ""
 
 # ── 11. Heartbeat loop ───────────────────────────────────
 heartbeat() {
+    local failures=0
     while true; do
-        sleep $HEARTBEAT_INTERVAL
+        sleep "$HEARTBEAT_INTERVAL"
         RESP=$(curl -s -X POST "$PROXY_BASE/mirrors/contribute" \
             -H "Content-Type: application/json" \
             -d "{\"url\": \"$TUNNEL_URL\"}" 2>&1)
         if echo "$RESP" | grep -q '"ok":true'; then
             echo "[heartbeat] Re-registered at $(date '+%H:%M:%S')"
+            failures=0
         else
             echo "[heartbeat] Re-registration failed: $RESP"
+            failures=$((failures + 1))
+            if [ "$failures" -ge 3 ]; then
+                echo "[heartbeat] 3 consecutive failures — stopping heartbeat"
+                return
+            fi
         fi
         # Also heartbeat to root server
-        if [ -n "$ROOT_SERVER" ]; then
+        if [ -n "${ROOT_SERVER:-}" ]; then
             curl -s -X POST "$ROOT_SERVER/mirrors/contribute" \
                 -H "Content-Type: application/json" \
                 -d "{\"url\": \"$TUNNEL_URL\"}" >/dev/null 2>&1

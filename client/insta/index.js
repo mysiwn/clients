@@ -1511,6 +1511,14 @@ self.addEventListener('fetch', event => {
 });`;
 if ('serviceWorker' in navigator) { const swBlob = new Blob([swCode], { type: 'application/javascript' }); const swUrl = URL.createObjectURL(swBlob); navigator.serviceWorker.register(swUrl, { scope: './' }).catch((e) => { console.warn('[instagram]', e); }); }
 
+// ── Cleanup on unload ─────────────────────────────────────
+window.addEventListener('beforeunload', () => {
+    clearBlobUrls();
+    clearTimeout(refreshTimeout);
+    clearTimeout(searchTimeout);
+    if (browserWs) { try { browserWs.close(); } catch (_) {} }
+});
+
 // ── Start ─────────────────────────────────────────────────
 settingRefresh.value = settings.refreshInterval;
 init();
