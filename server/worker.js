@@ -37,7 +37,7 @@ function isAllowedHost(hostname) {
 
 // ── CORS helpers ──────────────────────────────────────────
 const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
-const CORS_ALLOW_HEADERS = "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl, X-Encrypted-Auth, X-Client-Id, X-IG-Session, X-IG-Csrf, X-IG-Full-Cookie";
+const CORS_ALLOW_HEADERS = "Authorization, Content-Type, Cookie, X-CSRFToken, X-IG-App-ID, mediaurl, X-Encrypted-Auth, X-Client-Id, X-IG-Session, X-IG-Csrf, X-IG-Full-Cookie, X-IG-UA";
 const CORS_EXPOSE_HEADERS = "Content-Type, Content-Length, X-Cache, Set-Cookie, X-Encrypted-Body";
 const CORS_MAX_AGE = "86400";
 
@@ -912,15 +912,16 @@ export default {
     }
 
     const out = new Headers();
-    let igSession = null, igCsrf = null, igFullCookie = null;
+    let igSession = null, igCsrf = null, igFullCookie = null, igUA = null;
     for (const [key, value] of request.headers.entries()) {
       const lower = key.toLowerCase();
       if (lower === "host" || lower === "mediaurl" || lower.startsWith("cf-")
           || lower === "x-encrypted-auth" || lower === "x-client-id")
         continue;
-      if (lower === "x-ig-session")     { igSession = value; continue; }
-      if (lower === "x-ig-csrf")        { igCsrf = value;    continue; }
+      if (lower === "x-ig-session")     { igSession = value;    continue; }
+      if (lower === "x-ig-csrf")        { igCsrf = value;       continue; }
       if (lower === "x-ig-full-cookie") { igFullCookie = value; continue; }
+      if (lower === "x-ig-ua")          { igUA = value;         continue; }
       out.set(key, value);
     }
     out.set("Host", targetUrl.host);
@@ -950,7 +951,9 @@ export default {
       }
     }
 
-    if (!out.has("User-Agent")) {
+    if (service === "instagram" && igUA) {
+      out.set("User-Agent", igUA);
+    } else if (!out.has("User-Agent")) {
       out.set("User-Agent", USER_AGENTS[service] || USER_AGENTS.discord);
     }
     if (!out.has("Accept")) {

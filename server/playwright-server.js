@@ -467,7 +467,8 @@ function setupInstagramCapture(svc, pageIndex) {
                 svc.capturedSession = {
                     sessionId: sessionCookie.value,
                     csrfToken: csrfCookie?.value || '',
-                    fullCookies: fullCookieStr
+                    fullCookies: fullCookieStr,
+                    userAgent: CHROME_UA
                 };
                 stopScreenshots(svc);
                 console.log('[instagram] Session captured! (' + cookies.length + ' cookies)');
