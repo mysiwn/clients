@@ -1,0 +1,95 @@
+# Project Architecture: SCHOOL
+
+A unified, secure client for Discord and Instagram designed for restricted networks. This document summarizes the system structure and data flows for efficient AI context.
+
+## Core Components
+
+### 1. Launcher (`index.html`)
+- **Role**: Entry point for service selection and global settings.
+- **Vault**: AES-256-GCM encrypted storage for tokens/configs via `SecureStorage` (`client/shared/`).
+- **Logic**: Handles initial auth check and directs to sub-clients.
+
+### 2. Service-Specific Clients (`client/discord/`, `client/insta/`)
+- **Structure**: Standalone SPAs (`index.html`, `index-core.js`, `index.css`).
+- **Communication**: Bypasses CORS by routing all API/CDN requests through the **Worker**.
+- **Auth**: Supports direct token entry or remote browser login via **Playwright Server**.
+
+### 3. Unified CORS Proxy (`server/worker.js`)
+- **Platform**: Cloudflare Worker.
+- **Functions**:
+    - **API Proxy**: Strips/adds headers (e.g., `User-Agent`) for Discord/Instagram compatibility.
+    - **Media Proxy**: Streams images/videos from CDNs to bypass domain blocks.
+    - **E2E Encryption**: Uses ECDH (P-256) to secure sensitive data (tokens) between client and proxy.
+    - **Discovery**: Central registry for available mirror servers.
+
+### 4. Streaming Mirror (`server/playwright-server.js`)
+- **Platform**: Node.js (Local/VPS/Pi).
+- **Engine**: Headless Chromium (Playwright).
+- **Streaming**: Forwards viewport as JPEG screenshots via WebSocket (`stream-handler.js`).
+- **Input**: Maps client mouse/keyboard events to remote browser actions.
+- **Token Capture**: Intercepts auth headers via `token-capture.js` and sends them back to the client.
+
+## Data Flows
+
+### Browser-based Login
+1. **Client** (WS) -> **Mirror** (Playwright).
+2. **Mirror** -> **Discord/Insta Login** (Manual login by user in stream).
+3. **Capture Script** -> extracts `token`/`sessionid`.
+4. **Mirror** (WS) -> **Client** (Save to Vault).
+
+### Standard Operation
+1. **Client** (HTTPS) -> **Worker** (CORS Proxy).
+2. **Worker** (HTTPS) -> **Official API** (`discord.com`, `instagram.com`).
+3. **Official API** -> **Worker** -> **Client**.
+
+## Function Reference
+
+### Client Shared (`client/shared/`)
+
+#### `crypto-utils.js` (ECDH & AES)
+- `generateECDHKeyPair()`: Generates P-256 key pair for E2E proxy encryption.
+- `deriveAESFromECDH(priv, pubJwk, info)`: Derives AES-256-GCM key from shared secret.
+- `encryptPayload / decryptPayload`: Standard AES-GCM wrappers for data protection.
+
+#### `secure-storage.js` (Encrypted Vault)
+- `create(pin) / unlock(pin)`: Derives master key via PBKDF2 (600K iterations) to manage vault.
+- `setItem(key, val) / getItem(key)`: Transparent encryption/decryption for localStorage.
+- `lock()`: Clears the master key from memory.
+
+#### `input-validator.js` (Security Checks)
+- `isValidHttpsUrl(str)`: Ensures URLs use HTTPS.
+- `validateFileUpload(file)`: Enforces type whitelist and size limits (default 25MB).
+- `isAllowedMediaUrl(url)`: SSRF prevention for the media proxy.
+
+### Discord Client Logic (`client/discord/`)
+
+#### `index-core.js` (Main Logic)
+- `init()`: Orchestrates vault unlocking and initial connection.
+- `connect(token)`: Validates token with Discord API and initializes the app.
+- `apiCall(endpoint, opts)`: Authenticated wrapper for proxied Discord API requests.
+- `sendMessage()`: Handles text/file uploads with optional E2E encryption.
+
+#### `index-gateway.js` (Real-time)
+- `connectGateway()`: Manages Discord WebSocket (v9) lifecycle and heartbeats.
+- `handleGatewayDispatch(event, data)`: Routes real-time updates (messages, typing).
+- `e2eEncrypt / e2eDecrypt`: Channel-specific AES-GCM encryption for messages.
+
+### Server Side (`server/`)
+
+#### `worker.js` (CORS Proxy)
+- `fetch(request, env, ctx)`: Unified entry for API/Media proxying and Mirror registration.
+- `handleImageRequest(...)`: Proxies CDN media with KV caching for performance.
+- `handleRegisterMirror(...)`: Validates and stores mirror URLs in KV.
+
+#### `browser-manager.js` (Chromium Control)
+- `launchBrowser(svcName)`: Starts headless Chromium and context for a service.
+- `startScreenshots(svc)`: Main loop for capturing and broadcasting JPEG frames.
+- `closeBrowser(svc)`: Graceful shutdown of browser and context.
+
+#### `stream-handler.js` (WebSocket Input)
+- `initWebSocket(wss)`: Handles incoming client streams and routes control messages.
+- `handleInput(svc, msg)`: Translates client events (click, key) to Playwright actions.
+
+#### `token-capture.js` (Auth Interception)
+- `setupDiscordCapture(svc)`: Listens for Discord API requests to extract auth headers.
+- `setupInstagramCapture(svc)`: Monitors cookies to capture the `sessionid` and `csrftoken`.
